@@ -14,13 +14,11 @@ export const FIELD_DEPTH = 10;
 export const FIELD_HEIGHT = 18;
 
 // Visual constants
-export const BLOCK_SIZE = 0.99;
+export const BLOCK_SIZE = 0.98;
 export const FIELD_ROTATION_DURATION = 160; // ms
 export const PIECE_ANIMATION_DURATION = 60; // ms для анимации движения фигур
 export const LANDED_BLOCKS_OPACITY = 1.0; // Прозрачность упавших фигур
-export const LOCK_DELAY_TIME = 500; // ms - время задержки перед окончательным размещением фигуры
-export const MIN_3D_ARRAY_SIZE = 3; // Минимальный размер 3D массива для уничтожения
-export const LEVEL_CLEAR_ANIMATION_DURATION = 500; // ms - время анимации исчезновения одного уровня
+export const LOCK_DELAY_TIME = 1000; // ms - время задержки перед окончательным размещением фигуры
 
 // Camera constants
 export const DYNAMIC_CAMERA_DISTANCE = 10; // Базовое расстояние от точки наблюдения
@@ -39,7 +37,6 @@ export const MINIMAP_SIZE = 300;
 
 // Game mechanics
 export const DROP_INTERVAL = 800;
-export const PIECE_FALL_SPEED = 1000; // ms между автоматическими падениями
 
 // Next piece preview
 export const NEXT_PIECE_SCALE = 0.5;

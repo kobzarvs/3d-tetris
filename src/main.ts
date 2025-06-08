@@ -1,17 +1,28 @@
 import './style.css'
 import * as THREE from 'three';
 import { effect } from '@reatom/core';
-import { 
-    gameStateAtom, 
-    scoreAtom, 
-    fieldRotationAtom, 
+import {
+    gameStateAtom,
+    scoreAtom,
+    fieldRotationAtom,
     coloredModeAtom,
     difficultyLevelAtom,
+    lockDelayTimerVisibleAtom,
     nextPieceAtom,
     tetrominoShapes,
     tetrominoColors,
-    gameActions
+    gameActions,
+    getRandomPiece,
+    rotateInViewPlane,
+    rotateVertical,
+    rotateSide,
+    canPlacePieceCompat,
+    gameFieldAtom,
+    currentPieceAtom
 } from './game-logic';
+import { lockDelayTimerWidget } from './widgets/lock-delay-indicator.ts';
+import './models/lock-delay'; // Инициализируем модель lock delay
+import { lockDelayAtom } from './models/lock-delay';
 import {
     GameState,
     FIELD_WIDTH,
@@ -21,9 +32,6 @@ import {
     FIELD_ROTATION_DURATION,
     PIECE_ANIMATION_DURATION,
     LANDED_BLOCKS_OPACITY,
-    LOCK_DELAY_TIME,
-    MIN_3D_ARRAY_SIZE,
-    LEVEL_CLEAR_ANIMATION_DURATION,
     DYNAMIC_CAMERA_DISTANCE,
     DYNAMIC_CAMERA_MIN_DISTANCE,
     DYNAMIC_CAMERA_SMOOTH,
@@ -100,7 +108,6 @@ const sharedEdgesGeometry = new THREE.EdgesGeometry(sharedBlockGeometry);
 // Простая миникарта с ортогональной камерой над реальным стаканом
 let minimapRenderer: THREE.WebGLRenderer;
 let minimapCamera: THREE.OrthographicCamera;
-let minimapCanvas: HTMLCanvasElement;
 
 // Next piece preview renderer
 let nextPieceRenderer: THREE.WebGLRenderer;
@@ -189,27 +196,12 @@ interface Block3D {
     z: number;
 }
 
-// 3D массив для уничтожения
-interface CubeArray3D {
-    blocks: Block3D[];
-    size: { width: number; height: number; depth: number };
-    minCorner: Block3D;
-    maxCorner: Block3D;
-}
 
 // Используем tetrominoShapes и tetrominoColors из game-logic.ts
 
-// Функция для генерации случайной фигуры
-function getRandomPiece(): keyof typeof tetrominoShapes {
-    const shapes = Object.keys(tetrominoShapes) as (keyof typeof tetrominoShapes)[];
-    return shapes[Math.floor(Math.random() * shapes.length)];
-}
+// Функция getRandomPiece импортирована из game-logic.ts
 
-// Game data
-let gameField: (string | null)[][][] = [];
-let currentPieceType: keyof typeof tetrominoShapes | null = null;
-let currentPieceBlocks: Block3D[] = [];
-let currentPiecePosition = { x: 5, y: 18, z: 5 };
+// Game data (migrated to currentPieceAtom)
 
 // Анимация движения фигур
 let isAnimating = false;
@@ -217,22 +209,10 @@ let animationStartTime = 0;
 let animationStartPosition = { x: 0, y: 0, z: 0 };
 let animationTargetPosition = { x: 0, y: 0, z: 0 };
 
-// Lock delay механика
-let lockDelayActive = false;
-let lockDelayTimeoutId: number | null = null;
-let lockDelayResets = 0;
-const MAX_LOCK_DELAY_RESETS = 15; // Максимальное количество сбросов lock delay
+// Lock delay механика (теперь через Reatom)
 
-// Стандартный таймер падения
-let dropTimerActive = false;
-let dropTimerExpired = false;
-let lastDropTime = Date.now();
-const dropInterval = 1000; // Интервал стандартного падения
+// (Drop timer не нужен - всё управляется через lock delay)
 
-// Анимация очистки уровней
-let isLevelClearAnimating = false;
-let levelClearQueue: number[] = []; // Очередь уровней для анимированного удаления
-let currentClearLevel = -1;
 
 // Камера
 type CameraMode = 'front' | 'top';
@@ -276,8 +256,10 @@ const fallingPieces: AnimatedPiece[] = [];
 
 // Functions
 function initializeGameField() {
-    gameField = Array(FIELD_HEIGHT).fill(null).map(() => Array(FIELD_DEPTH).fill(null).map(() => Array(FIELD_WIDTH).fill(null)));
+    const emptyField = Array(FIELD_HEIGHT).fill(null).map(() => Array(FIELD_DEPTH).fill(null).map(() => Array(FIELD_WIDTH).fill(null)));
+    gameFieldAtom.set(emptyField);
 }
+
 
 function resetGameState() {
     console.log("🔄 Resetting game state...");
@@ -308,7 +290,7 @@ function resetGameState() {
     }
     pieceVisuals = null;
     obstacleHighlightsGroup = null;
-    currentPieceType = null;
+    currentPieceAtom.clear();
 
     rotationContainer.rotation.y = 0;
 
@@ -317,379 +299,54 @@ function resetGameState() {
 }
 
 // Базовые функции вращения вокруг осей
-function rotateAroundY(b: Block3D[]) { return b.map(bl => ({ x: bl.z, y: bl.y, z: -bl.x })); }
-function rotateAroundX(b: Block3D[]) { return b.map(bl => ({ x: bl.x, y: -bl.z, z: bl.y })); }
-function rotateAroundZ(b: Block3D[]) { return b.map(bl => ({ x: -bl.y, y: bl.x, z: bl.z })); }
-
-// Адаптивные функции вращения относительно текущего поворота поля
-function rotateInViewPlane(blocks: Block3D[]): Block3D[] {
-    // Вращение в плоскости экрана (против часовой стрелки при взгляде на игрока)
-    // Всегда вращение вокруг оси Y, так как камера всегда смотрит сверху
-
-    return rotateAroundY(blocks);
-}
-
-function rotateVertical(blocks: Block3D[]): Block3D[] {
-    // Вращение в вертикальной плоскости относительно камеры (Q)
-    const rotationSteps = Math.round(fieldRotationAtom() / 90) % 4;
-    switch (rotationSteps) {
-        case 0: return rotateAroundZ(blocks);  // 0° - передняя стена видна, вращаем в плоскости XY
-        case 1: return rotateAroundX(blocks);  // 90° - правая стена видна, вращаем в плоскости YZ
-        case 2: return rotateAroundZ(blocks);  // 180° - задняя стена видна, вращаем в плоскости XY
-        case 3: return rotateAroundX(blocks);  // 270° - левая стена видна, вращаем в плоскости YZ
-        default: return blocks;
-    }
-}
-
-function rotateSide(blocks: Block3D[]): Block3D[] {
-    // Вращение в боковой плоскости относительно камеры (E)
-    const rotationSteps = Math.round(fieldRotationAtom() / 90) % 4;
-    switch (rotationSteps) {
-        case 0: return rotateAroundX(blocks);  // 0° - боковое вращение в плоскости YZ
-        case 1: return rotateAroundZ(blocks);  // 90° - боковое вращение в плоскости XY
-        case 2: return rotateAroundX(blocks);  // 180° - боковое вращение в плоскости YZ
-        case 3: return rotateAroundZ(blocks);  // 270° - боковое вращение в плоскости XY
-        default: return blocks;
-    }
-}
-
-function canPlacePiece(blocks: Block3D[], position: Block3D): boolean {
-    return blocks.every(block => {
-        const x = Math.round(position.x + block.x);
-        const y = Math.round(position.y + block.y);
-        const z = Math.round(position.z + block.z);
-        return x >= 0 && x < FIELD_WIDTH && y >= 0 && y < FIELD_HEIGHT && z >= 0 && z < FIELD_DEPTH && gameField[y][z][x] === null;
-    });
-}
-
-// Функции для управления lock delay
-function startLockDelay() {
-    if (lockDelayActive) return; // Уже активен
-
-    lockDelayActive = true;
-
-    // Устанавливаем таймер для автоматического размещения фигуры
-    if (lockDelayTimeoutId) {
-        clearTimeout(lockDelayTimeoutId);
-    }
-    lockDelayTimeoutId = setTimeout(() => {
-        if (lockDelayActive) {
-            placePiece();
-        }
-    }, LOCK_DELAY_TIME);
-}
-
-function cancelLockDelay() {
-    if (!lockDelayActive) return;
-
-    // Увеличиваем счетчик сбросов
-    lockDelayResets++;
-
-    // Если превышен лимит сбросов, немедленно размещаем фигуру
-    if (lockDelayResets >= MAX_LOCK_DELAY_RESETS) {
-        lockDelayActive = false;
-        if (lockDelayTimeoutId) {
-            clearTimeout(lockDelayTimeoutId);
-            lockDelayTimeoutId = null;
-        }
-        placePiece();
-        return;
-    }
-
-    lockDelayActive = false;
-    if (lockDelayTimeoutId) {
-        clearTimeout(lockDelayTimeoutId);
-        lockDelayTimeoutId = null;
-    }
-}
 
 
-function resetLockDelayState() {
-    lockDelayActive = false;
-    lockDelayResets = 0;
-    if (lockDelayTimeoutId) {
-        clearTimeout(lockDelayTimeoutId);
-        lockDelayTimeoutId = null;
-    }
-}
 
-// Функции для управления стандартным таймером падения
-function startDropTimer() {
-    dropTimerActive = true;
-    dropTimerExpired = false;
-    lastDropTime = Date.now();
-}
+// Lock delay logic теперь полностью в game-logic.ts через эффекты
 
-function checkDropTimer(): boolean {
-    if (!dropTimerActive) return false;
+// Lock delay таймер теперь в отдельном модуле models/lock-delay-indicator.ts
 
-    const elapsed = Date.now() - lastDropTime;
-    if (elapsed >= dropInterval) {
-        dropTimerExpired = true;
-        return true;
-    }
-    return false;
-}
+// Старая функция удалена - теперь визуальное обновление идет через эффект выше
 
-function resetDropTimer() {
-    dropTimerActive = false;
-    dropTimerExpired = false;
-}
+// (Drop timer функции удалены - всё управляется lock delay)
 
-function isOnGround(): boolean {
-    return !canPlacePiece(currentPieceBlocks, { ...currentPiecePosition, y: currentPiecePosition.y - 1 });
-}
-
-// Функции для поиска и уничтожения 3D массивов кубиков
-function find3DCubeArrays(): CubeArray3D[] {
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('🔍 Поиск максимальных 3D параллелепипедов (минимум ' + MIN_3D_ARRAY_SIZE + 'x' + MIN_3D_ARRAY_SIZE + 'x' + MIN_3D_ARRAY_SIZE + ')');
-    console.log('═══════════════════════════════════════════════════════════');
-
-    const visited = Array(FIELD_HEIGHT).fill(null).map(() =>
-        Array(FIELD_DEPTH).fill(null).map(() =>
-            Array(FIELD_WIDTH).fill(false)
-        )
-    );
-
-    const allFoundParallelepipeds: CubeArray3D[] = [];
-
-    // Проходим по всем блокам поля
-    for (let y = 0; y < FIELD_HEIGHT; y++) {
-        for (let z = 0; z < FIELD_DEPTH; z++) {
-            for (let x = 0; x < FIELD_WIDTH; x++) {
-                // Если блок заполнен и еще не посещен
-                if (gameField[y][z][x] !== null && !visited[y][z][x]) {
-                    // Проверяем, может ли от этого блока образоваться минимальный куб
-                    if (canFormMinimalCube(x, y, z)) {
-                        console.log(`🔍 Проверяем блок (${x},${y},${z}) - может образовать минимальный куб`);
-
-                        // Ищем максимальный параллелепипед от этой точки
-                        const maxParallelepiped = findMaxParallelepipedFrom(x, y, z, visited);
-
-                        if (maxParallelepiped) {
-                            console.log(`📦 Найден параллелепипед ${maxParallelepiped.size.width}x${maxParallelepiped.size.height}x${maxParallelepiped.size.depth} (${maxParallelepiped.blocks.length} блоков)`);
-                            console.log(`   Позиция: от (${maxParallelepiped.minCorner.x},${maxParallelepiped.minCorner.y},${maxParallelepiped.minCorner.z}) до (${maxParallelepiped.maxCorner.x},${maxParallelepiped.maxCorner.y},${maxParallelepiped.maxCorner.z})`);
-
-                            allFoundParallelepipeds.push(maxParallelepiped);
-
-                            // Отмечаем все блоки этого параллелепипеда как посещенные
-                            for (const block of maxParallelepiped.blocks) {
-                                visited[block.y][block.z][block.x] = true;
-                            }
-                        }
-                    } else {
-                        // Отмечаем блок как посещенный, чтобы не проверять его снова
-                        visited[y][z][x] = true;
-                    }
-                }
-            }
-        }
-    }
-
-    // Выбираем самый большой параллелепипед
-    let largestParallelepiped: CubeArray3D | null = null;
-    let maxVolume = 0;
-
-    for (const parallelepiped of allFoundParallelepipeds) {
-        const volume = parallelepiped.size.width * parallelepiped.size.height * parallelepiped.size.depth;
-        if (volume > maxVolume) {
-            maxVolume = volume;
-            largestParallelepiped = parallelepiped;
-        }
-    }
-
-    const result = largestParallelepiped ? [largestParallelepiped] : [];
-
-    console.log(`\n📊 Найдено параллелепипедов: ${allFoundParallelepipeds.length}, выбран максимальный: ${result.length}`);
-    if (largestParallelepiped) {
-        console.log(`🏆 Максимальный: ${largestParallelepiped.size.width}x${largestParallelepiped.size.height}x${largestParallelepiped.size.depth} (объем: ${maxVolume})`);
-    }
-    console.log('═══════════════════════════════════════════════════════════\n');
-
-    return result;
-}
-
-// Проверяет, может ли от данного блока образоваться минимальный куб 2x2x2
-function canFormMinimalCube(x: number, y: number, z: number): boolean {
-    // Всегда проверяем возможность образования 2x2x2 куба для оптимизации поиска
-    for (let dy = 0; dy < 2; dy++) {
-        for (let dz = 0; dz < 2; dz++) {
-            for (let dx = 0; dx < 2; dx++) {
-                const checkX = x + dx;
-                const checkY = y + dy;
-                const checkZ = z + dz;
-
-                // Проверяем границы
-                if (checkX >= FIELD_WIDTH || checkY >= FIELD_HEIGHT || checkZ >= FIELD_DEPTH) {
-                    return false;
-                }
-
-                // Проверяем, что блок заполнен
-                if (gameField[checkY][checkZ][checkX] === null) {
-                    return false;
-                }
-            }
-        }
-    }
-    return true;
-}
-
-// Находит максимальный параллелепипед, начиная от данного блока
-function findMaxParallelepipedFrom(startX: number, startY: number, startZ: number, _visited: boolean[][][]): CubeArray3D | null {
-    console.log(`   🔍 Ищем максимальный параллелепипед от (${startX},${startY},${startZ})`);
-
-    let maxVolume = 0;
-    let bestParallelepiped: CubeArray3D | null = null;
-
-    // Пробуем все возможные размеры параллелепипеда
-    for (let width = MIN_3D_ARRAY_SIZE; width <= FIELD_WIDTH - startX; width++) {
-        for (let height = MIN_3D_ARRAY_SIZE; height <= FIELD_HEIGHT - startY; height++) {
-            for (let depth = MIN_3D_ARRAY_SIZE; depth <= FIELD_DEPTH - startZ; depth++) {
-
-                // Проверяем, можно ли построить параллелепипед таких размеров
-                if (canBuildParallelepiped(startX, startY, startZ, width, height, depth)) {
-                    const volume = width * height * depth;
-                    console.log(`     ✅ Возможен параллелепипед ${width}x${height}x${depth} (объем: ${volume})`);
-
-                    if (volume > maxVolume) {
-                        maxVolume = volume;
-
-                        // Создаем список блоков параллелепипеда
-                        const blocks: Block3D[] = [];
-                        for (let dy = 0; dy < height; dy++) {
-                            for (let dz = 0; dz < depth; dz++) {
-                                for (let dx = 0; dx < width; dx++) {
-                                    blocks.push({ x: startX + dx, y: startY + dy, z: startZ + dz });
-                                }
-                            }
-                        }
-
-                        bestParallelepiped = {
-                            blocks,
-                            size: { width, height, depth },
-                            minCorner: { x: startX, y: startY, z: startZ },
-                            maxCorner: { x: startX + width - 1, y: startY + height - 1, z: startZ + depth - 1 }
-                        };
-                    }
-                } else {
-                    // Если не можем построить параллелепипед данной ширины,
-                    // то большей ширины тоже не сможем
-                    break;
-                }
-            }
-        }
-    }
-
-    if (bestParallelepiped) {
-        console.log(`   🏆 Максимальный параллелепипед: ${bestParallelepiped.size.width}x${bestParallelepiped.size.height}x${bestParallelepiped.size.depth} (объем: ${maxVolume})`);
-    } else {
-        console.log(`   ❌ Не найдено подходящих параллелепипедов от (${startX},${startY},${startZ})`);
-    }
-
-    return bestParallelepiped;
-}
-
-// Проверяет, можно ли построить параллелепипед заданных размеров от данной точки
-function canBuildParallelepiped(startX: number, startY: number, startZ: number, width: number, height: number, depth: number): boolean {
-    for (let dy = 0; dy < height; dy++) {
-        for (let dz = 0; dz < depth; dz++) {
-            for (let dx = 0; dx < width; dx++) {
-                const checkX = startX + dx;
-                const checkY = startY + dy;
-                const checkZ = startZ + dz;
-
-                // Проверяем границы
-                if (checkX >= FIELD_WIDTH || checkY >= FIELD_HEIGHT || checkZ >= FIELD_DEPTH) {
-                    return false;
-                }
-
-                // Проверяем, что блок заполнен
-                if (gameField[checkY][checkZ][checkX] === null) {
-                    return false;
-                }
-            }
-        }
-    }
-    return true;
-}
+// isOnGround теперь через isOnGroundAtom - эта функция больше не нужна
 
 
-function clear3DCubeArrays(cubeArrays: CubeArray3D[]): number {
-    let totalBlocksCleared = 0;
 
-    // Очищаем каждый найденный массив
-    for (const cubeArray of cubeArrays) {
-        for (const block of cubeArray.blocks) {
-            gameField[block.y][block.z][block.x] = null;
-            totalBlocksCleared++;
-        }
-        console.log(`🧊 Cleared 3D array: ${cubeArray.size.width}x${cubeArray.size.height}x${cubeArray.size.depth} (${cubeArray.blocks.length} blocks)`);
-    }
-
-    // Применяем гравитацию после удаления массивов
-    if (totalBlocksCleared > 0) {
-        applyGravity();
-    }
-
-    return totalBlocksCleared;
-}
-
-function applyGravity() {
-    // Проходим по каждой колонке (x, z) и опускаем блоки вниз
-    for (let x = 0; x < FIELD_WIDTH; x++) {
-        for (let z = 0; z < FIELD_DEPTH; z++) {
-            // Собираем все непустые блоки в колонке
-            const blocks: (string | null)[] = [];
-            for (let y = 0; y < FIELD_HEIGHT; y++) {
-                if (gameField[y][z][x] !== null) {
-                    blocks.push(gameField[y][z][x]);
-                }
-            }
-
-            // Очищаем колонку
-            for (let y = 0; y < FIELD_HEIGHT; y++) {
-                gameField[y][z][x] = null;
-            }
-
-            // Размещаем блоки снизу вверх
-            for (let i = 0; i < blocks.length; i++) {
-                gameField[i][z][x] = blocks[i];
-            }
-        }
-    }
-}
 
 
 function spawnNewPiece() {
     // Сбрасываем состояние таймеров и счетчики
-    resetLockDelayState();
-    resetDropTimer();
+    // Lock delay теперь управляется через эффект
 
     // Получаем тип следующей фигуры из nextPieceAtom
     let pieceType = nextPieceAtom();
-    
+
     // Если nextPiece еще не установлен (первый запуск), генерируем случайную фигуру
     if (!pieceType) {
         pieceType = getRandomPiece();
     }
-    
-    // Устанавливаем новую следующую фигуру
-    nextPieceAtom.update(getRandomPiece());
 
-    currentPieceType = pieceType;
-    currentPieceBlocks = [...tetrominoShapes[currentPieceType]];
-    currentPiecePosition = { x: 5, y: FIELD_HEIGHT - 2, z: 5 };
+    // Создаем временную фигуру для проверки коллизий ПЕРЕД spawn
+    const testBlocks = [...tetrominoShapes[pieceType]];
+    const testPosition = { x: 5, y: FIELD_HEIGHT - 2, z: 5 };
 
-    if (!canPlacePiece(currentPieceBlocks, currentPiecePosition)) {
+    // Проверяем, можем ли разместить фигуру
+    if (!canPlacePieceCompat(testBlocks, testPosition)) {
         gameStateAtom.setGameOver();
         return;
     }
 
-    console.log(`🔮 Spawned piece: ${currentPieceType}, Next piece: ${nextPieceAtom()}`);
+    // Устанавливаем новую следующую фигуру
+    nextPieceAtom.update(getRandomPiece());
 
-    // Запускаем стандартный таймер падения для новой фигуры
-    startDropTimer();
+    // Только теперь создаем фигуру, когда знаем что место свободно
+    currentPieceAtom.spawn(pieceType);
+
+    console.log(`🔮 Spawned piece: ${pieceType}, Next piece: ${nextPieceAtom()}`);
+
+    // Lock delay запустится автоматически через эффект если фигура на земле
     updateVisuals();
 }
 
@@ -700,15 +357,22 @@ function updateVisuals() {
         gameContainer.remove(pieceVisuals);
     }
 
-    if (currentPieceType) {
+    const piece = currentPieceAtom();
+    if (piece) {
         // ИСПРАВЛЕНО: используем текущую позицию без дублирования логики анимации
-        const renderPosition = currentPiecePosition;
+        const renderPosition = piece.position;
 
         pieceVisuals = new THREE.Group();
-        const color = tetrominoColors[currentPieceType];
-        const material = getBlockMaterial(color);
+        const color = tetrominoColors[piece.type];
+        // Создаем новый материал для активной фигуры (не используем shared pool)
+        const material = new THREE.MeshPhongMaterial({
+            color,
+            emissive: color,
+            emissiveIntensity: 0.2,
+            transparent: false
+        });
 
-        for (const block of currentPieceBlocks) {
+        for (const block of piece.blocks) {
             const cube = new THREE.Mesh(sharedBlockGeometry, material);
             const x = renderPosition.x + block.x;
             const y = renderPosition.y + block.y;
@@ -893,7 +557,7 @@ function updateLandedVisuals() {
     for (let y = 0; y < FIELD_HEIGHT; y++) {
         for (let z = 0; z < FIELD_DEPTH; z++) {
             for (let x = 0; x < FIELD_WIDTH; x++) {
-                const pieceType = gameField[y][z][x];
+                const pieceType = gameFieldAtom()[y][z][x];
                 if (pieceType) {
                     const originalColor = tetrominoColors[pieceType as keyof typeof tetrominoColors];
                     const color = coloredModeAtom() ? originalColor : FROZEN_FIGURE_COLOR; // Серый цвет если цветной режим выключен
@@ -915,10 +579,11 @@ function updateLandedVisuals() {
 }
 
 function updateWallProjections(renderPosition?: { x: number; y: number; z: number }) {
-    if (!currentPieceType) return;
+    const piece = currentPieceAtom();
+    if (!piece) return;
 
     // Используем переданную позицию или текущую позицию фигуры
-    const projectionPosition = renderPosition || currentPiecePosition;
+    const projectionPosition = renderPosition || piece.position;
 
     if (bottomProjectionGroup) gameContainer.remove(bottomProjectionGroup);
     if (leftProjectionGroup) gameContainer.remove(leftProjectionGroup);
@@ -927,7 +592,7 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
     if (obstacleHighlightsGroup) gameContainer.remove(obstacleHighlightsGroup);
 
     const projectionMaterial = new THREE.MeshBasicMaterial({
-        color: tetrominoColors[currentPieceType],
+        color: tetrominoColors[piece.type],
         transparent: true,
         opacity: 0.3,
         side: THREE.DoubleSide
@@ -947,7 +612,7 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
         let canPlaceAtThisLevel = true;
 
         // Проверяем все блоки фигуры на этом уровне
-        for (const testBlock of currentPieceBlocks) {
+        for (const testBlock of piece.blocks) {
             const testWorldX = Math.round(projectionPosition.x + testBlock.x);
             const testWorldZ = Math.round(projectionPosition.z + testBlock.z);
             const testBlockY = testY + testBlock.y;
@@ -956,7 +621,7 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
             if (testBlockY < 0 || // Ниже дна
                 testWorldX < 0 || testWorldX >= FIELD_WIDTH ||
                 testWorldZ < 0 || testWorldZ >= FIELD_DEPTH ||
-                (gameField[testBlockY] && gameField[testBlockY][testWorldZ][testWorldX] !== null)) {
+                (gameFieldAtom()[testBlockY] && gameFieldAtom()[testBlockY][testWorldZ][testWorldX] !== null)) {
                 canPlaceAtThisLevel = false;
                 break;
             }
@@ -973,7 +638,7 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
     const columnBottomBlocks = new Map<string, { block: { x: number; y: number; z: number }, lowestY: number }>();
 
     // Группируем блоки по колонкам (x, z) и находим самый нижний в каждой
-    for (const block of currentPieceBlocks) {
+    for (const block of piece.blocks) {
         const worldX = Math.round(projectionPosition.x + block.x);
         const worldZ = Math.round(projectionPosition.z + block.z);
         const key = `${worldX},${worldZ}`;
@@ -1013,7 +678,7 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
             bottomProjectionGroup.add(whitePlane);
         }
         // Если под блоком есть препятствие в финальной позиции
-        else if (underBlockY >= 0 && gameField[underBlockY] && gameField[underBlockY][worldZ][worldX] !== null) {
+        else if (underBlockY >= 0 && gameFieldAtom()[underBlockY] && gameFieldAtom()[underBlockY][worldZ][worldX] !== null) {
             // Белая проекция на препятствии
             const whitePlane = new THREE.Mesh(sharedPlaneGeometry, materialPools.projectionWhite);
             whitePlane.rotation.x = -Math.PI / 2;
@@ -1030,7 +695,7 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
             let redProjectionY = -FIELD_HEIGHT / 2 + 0.01; // По умолчанию на дне
 
             for (let y = underBlockY - 1; y >= 0; y--) {
-                if (gameField[y] && gameField[y][worldZ][worldX] !== null) {
+                if (gameFieldAtom()[y] && gameFieldAtom()[y][worldZ][worldX] !== null) {
                     redProjectionY = y - FIELD_HEIGHT / 2 + 0.5 + BLOCK_SIZE / 2 + 0.001;
                     break;
                 }
@@ -1093,7 +758,7 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
 
     const createProjectionGroup = (coordsFunc: (b: Block3D) => {x:number, y:number, z:number}, rotation: {x:number, y:number, z:number}) => {
         const group = new THREE.Group();
-        for (const block of currentPieceBlocks) {
+        for (const block of piece.blocks) {
             const coords = coordsFunc(block);
             // ИСПРАВЛЕНО: используем shared геометрию
             const plane = new THREE.Mesh(sharedPlaneGeometry, projectionMaterial.clone());
@@ -1131,7 +796,7 @@ function toggleAxesHelper() {
 function toggleWallProjections() {
     projectionsVisible = !projectionsVisible;
     if (projectionsVisible) {
-        if (currentPieceType) updateWallProjections();
+        if (currentPieceAtom()) updateWallProjections();
     } else {
         if (bottomProjectionGroup) gameContainer.remove(bottomProjectionGroup);
         if (obstacleHighlightsGroup) gameContainer.remove(obstacleHighlightsGroup);
@@ -1143,9 +808,9 @@ function toggleWallProjections() {
 
 function updateWallsOpacity() {
     if (!frontWallMesh || !backWallMesh || !leftWallMesh || !rightWallMesh) return;
-    
+
     const rotationSteps = Math.round(fieldRotationAtom() / 90) % 4;
-    
+
     // Сброс всех стен к базовой прозрачности и оригинальному цвету
     (frontWallMesh.material as THREE.MeshPhongMaterial).opacity = 0.2;
     (frontWallMesh.material as THREE.MeshPhongMaterial).color.setHex(0x444444);
@@ -1155,7 +820,7 @@ function updateWallsOpacity() {
     (leftWallMesh.material as THREE.MeshPhongMaterial).color.setHex(0x444444);
     (rightWallMesh.material as THREE.MeshPhongMaterial).opacity = 0.2;
     (rightWallMesh.material as THREE.MeshPhongMaterial).color.setHex(0x444444);
-    
+
     // Делаем ближайшую к камере стену полностью прозрачной
     // Камера в позиции (0, 14, 14), поэтому ближайшие стены:
     switch (rotationSteps) {
@@ -1191,7 +856,7 @@ function createFieldBoundaries() {
     leftWallMesh = createWall(new THREE.PlaneGeometry(FIELD_DEPTH, FIELD_HEIGHT), [-FIELD_WIDTH / 2, 0, 0], [0, Math.PI / 2, 0]);
     rightWallMesh = createWall(new THREE.PlaneGeometry(FIELD_DEPTH, FIELD_HEIGHT), [FIELD_WIDTH / 2, 0, 0], [0, -Math.PI / 2, 0]);
     fieldContainer.add(frontWallMesh, backWallMesh, leftWallMesh, rightWallMesh);
-    
+
     updateWallsOpacity();
 
     // Добавляем светло-голубое дно стакана
@@ -1211,37 +876,23 @@ function movePiece(dx: number, dy: number, dz: number) {
     // Проверяем, можем ли мы начать анимацию (не анимируемся уже)
     if (isAnimating) return;
 
-    const newPos = { x: currentPiecePosition.x + dx, y: currentPiecePosition.y + dy, z: currentPiecePosition.z + dz };
-    if (canPlacePiece(currentPieceBlocks, newPos)) {
-        // Отменяем lock delay если фигура смогла переместиться
-        cancelLockDelay();
+    const piece = currentPieceAtom();
+    if (!piece) return;
 
+    const newPos = { x: piece.position.x + dx, y: piece.position.y + dy, z: piece.position.z + dz };
+    if (canPlacePieceCompat(piece.blocks, newPos)) {
         // Начинаем анимацию к новой позиции
         isAnimating = true;
         animationStartTime = Date.now();
-        animationStartPosition = { ...currentPiecePosition };
+        animationStartPosition = { ...piece.position };
         animationTargetPosition = newPos;
 
-        // Сразу обновляем логическую позицию для игровых проверок
-        currentPiecePosition = newPos;
+        // Сразу обновляем логическую позицию через Reatom action
+        currentPieceAtom.move(dx, dy, dz);
+        // Lock delay будет обновлен автоматически через effect при изменении позиции
 
         // Обновляем миникарту при движении фигуры
         updateMinimap();
-
-        // Если это движение вниз от стандартного таймера, перезапускаем таймер падения
-        if (dy < 0) {
-            startDropTimer();
-        }
-
-        // Проверяем, находится ли фигура на земле после движения
-        if (isOnGround()) {
-            startLockDelay();
-        }
-    } else if (dy < 0) {
-        // Фигура не может двигаться вниз - начинаем lock delay если еще не активен
-        if (!lockDelayActive) {
-            startLockDelay();
-        }
     }
 }
 
@@ -1254,359 +905,43 @@ function movePieceRelativeToField(dx: number, dy: number, dz: number) {
     movePiece(tDx, dy, tDz);
 }
 
-function placePiece(timeout = 0) {
-    if (!currentPieceType) return;
 
-    // Сбрасываем состояние таймеров
-    resetLockDelayState();
-    resetDropTimer();
 
-    // Подсчитываем очки за размещение фигуры
-    let placementPoints = 0;
 
-    for (const block of currentPieceBlocks) {
-        const x = Math.round(currentPiecePosition.x + block.x);
-        const y = Math.round(currentPiecePosition.y + block.y);
-        const z = Math.round(currentPiecePosition.z + block.z);
-        if (x >= 0 && x < FIELD_WIDTH && y >= 0 && y < FIELD_HEIGHT && z >= 0 && z < FIELD_DEPTH) {
-            gameField[y][z][x] = currentPieceType;
 
-            // Начисляем очки за уровень размещения (уровень 0 = 1 очко, уровень 1 = 2 очка и т.д.)
-            const levelPoints = y + 1;
-            placementPoints += levelPoints;
-            console.log(`   📦 Block at level ${y}: +${levelPoints} points`);
-        }
-    }
 
-    // Начисляем очки за размещение
-    if (placementPoints > 0) {
-        const oldScore = scoreAtom();
-        scoreAtom.add(placementPoints);
-        const newScore = scoreAtom();
-        console.log(`🎯 Placement bonus: +${placementPoints} points (piece placed on levels)`);
-        console.log(`💰 Score changed: ${oldScore} → ${newScore} (+${placementPoints})`);
-    }
-    checkCompletedLines();
-    updateLandedVisuals();
 
-    // Убираем текущую фигуру и проекции
-    currentPieceType = null;
-    if (pieceVisuals) gameContainer.remove(pieceVisuals);
-    if (obstacleHighlightsGroup) gameContainer.remove(obstacleHighlightsGroup);
-    if (bottomProjectionGroup) gameContainer.remove(bottomProjectionGroup);
-    if (leftProjectionGroup) gameContainer.remove(leftProjectionGroup);
-    if (rightProjectionGroup) gameContainer.remove(rightProjectionGroup);
-    if (backProjectionGroup) gameContainer.remove(backProjectionGroup);
 
-    setTimeout(spawnNewPiece, timeout);
-}
-
-function checkCompletedLines() {
-    // Если анимация очистки уже идет, не начинаем новую
-    if (isLevelClearAnimating) return;
-
-    let totalBlocksDestroyed = 0;
-
-    // 1. Проверяем и уничтожаем 3D массивы кубиков
-    const cubeArrays = find3DCubeArrays();
-    if (cubeArrays.length > 0) {
-        const blocksFromCubes = clear3DCubeArrays(cubeArrays);
-        totalBlocksDestroyed += blocksFromCubes;
-
-        // Подсчет очков за 3D массивы (уровневая система)
-        for (const cubeArray of cubeArrays) {
-            let cubePoints = 0;
-
-            // Подсчитываем очки для каждого уровня в 3D массиве
-            for (let level = cubeArray.minCorner.y; level <= cubeArray.maxCorner.y; level++) {
-                // Количество блоков на этом уровне
-                const blocksOnLevel = cubeArray.size.width * cubeArray.size.depth;
-                // Множитель уровня (нижний уровень 0 = множитель 1)
-                const levelMultiplier = level + 1;
-                // Очки за этот уровень
-                const levelPoints = blocksOnLevel * levelMultiplier;
-                cubePoints += levelPoints;
-
-                console.log(`   📊 Level ${level}: ${blocksOnLevel} blocks × ${levelMultiplier} = ${levelPoints} points`);
-            }
-
-            const oldScore = scoreAtom();
-            scoreAtom.add(cubePoints);
-            const newScore = scoreAtom();
-            console.log(`🧊 3D Array bonus: ${cubePoints} points for ${cubeArray.size.width}x${cubeArray.size.height}x${cubeArray.size.depth} (levels ${cubeArray.minCorner.y}-${cubeArray.maxCorner.y})`);
-            console.log(`💰 Score changed: ${oldScore} → ${newScore} (+${cubePoints})`);
-        }
-    }
-
-    // 2. Ищем полные горизонтальные слои для анимированного удаления
-    const completedLevels: number[] = [];
-    for (let y = FIELD_HEIGHT - 1; y >= 0; y--) {
-        let isLayerComplete = true;
-        for (let z = 0; z < FIELD_DEPTH; z++) {
-            for (let x = 0; x < FIELD_WIDTH; x++) {
-                if (gameField[y][z][x] === null) {
-                    isLayerComplete = false;
-                    break;
-                }
-            }
-            if (!isLayerComplete) break;
-        }
-        if (isLayerComplete) {
-            completedLevels.push(y);
-        }
-    }
-
-    // 3. Запускаем анимированную очистку уровней
-    if (completedLevels.length > 0) {
-        startLevelClearAnimation(completedLevels);
-    }
-
-    // Общая статистика
-    if (totalBlocksDestroyed > 0) {
-        console.log(`💥 Total blocks destroyed: ${totalBlocksDestroyed}`);
-    }
-}
-
-// Запуск анимированной очистки уровней
-function startLevelClearAnimation(levels: number[]) {
-    console.log(`🎬 Начинаем анимированную очистку уровней: [${levels.join(', ')}]`);
-
-    // Подсчитываем очки за очищенные уровни
-    let totalPoints = 0;
-
-    for (const level of levels) {
-        // Количество блоков на уровне (вся площадь)
-        const blocksOnLevel = FIELD_WIDTH * FIELD_DEPTH;
-        // Множитель уровня (нижний уровень 0 = множитель 1)
-        const levelMultiplier = level + 1;
-        // Очки за этот уровень
-        const levelPoints = blocksOnLevel * levelMultiplier;
-        totalPoints += levelPoints;
-
-        console.log(`   📊 Line clear level ${level}: ${blocksOnLevel} blocks × ${levelMultiplier} = ${levelPoints} points`);
-    }
-
-    if (totalPoints > 0) {
-        const oldScore = scoreAtom();
-        scoreAtom.add(totalPoints);
-        const newScore = scoreAtom();
-        console.log(`🧹 Line clear bonus: ${totalPoints} points for ${levels.length} levels [${levels.join(', ')}]`);
-        console.log(`💰 Score changed: ${oldScore} → ${newScore} (+${totalPoints})`);
-    }
-
-    // Сортируем уровни снизу вверх для корректной анимации
-    levelClearQueue = [...levels].sort((a, b) => a - b);
-    isLevelClearAnimating = true;
-    currentClearLevel = levelClearQueue.shift()!;
-
-    // Начинаем мерцание первого уровня
-    startLevelBlinking(currentClearLevel);
-}
-
-// Мерцание уровня перед удалением
-function startLevelBlinking(level: number) {
-    const blinkDuration = LEVEL_CLEAR_ANIMATION_DURATION;
-    const startTime = Date.now();
-
-    function blink() {
-        const elapsed = Date.now() - startTime;
-        const progress = elapsed / blinkDuration;
-
-        // Меняем прозрачность блоков с синусоидальной частотой
-        const opacity = 0.3 + 0.7 * Math.abs(Math.sin(elapsed * 0.02)); // Быстрое мерцание
-
-        // Обновляем прозрачность всех блоков на этом уровне
-        updateLevelOpacity(level, opacity);
-
-        if (progress < 1) {
-            requestAnimationFrame(blink);
-        } else {
-            // Удаляем уровень и начинаем обрушение
-            removeLevelAndCollapse(level);
-        }
-    }
-
-    requestAnimationFrame(blink);
-}
-
-// Обновление прозрачности уровня
-function updateLevelOpacity(level: number, opacity: number) {
-    // ИСПРАВЛЕНО: используем shared геометрию
-
-    // Очищаем только блоки на указанном уровне
-    const toRemove: THREE.Object3D[] = [];
-    landedBlocksContainer.children.forEach(child => {
-        const worldPos = new THREE.Vector3();
-        child.getWorldPosition(worldPos);
-        const gameY = Math.round(worldPos.y + FIELD_HEIGHT / 2 - 0.5);
-
-        if (gameY === level) {
-            toRemove.push(child);
-        }
-    });
-
-    // Удаляем старые блоки уровня
-    toRemove.forEach(block => landedBlocksContainer.remove(block));
-
-    // Добавляем блоки с новой прозрачностью
-    for (let z = 0; z < FIELD_DEPTH; z++) {
-        for (let x = 0; x < FIELD_WIDTH; x++) {
-            const pieceType = gameField[level][z][x];
-            if (pieceType) {
-                const originalColor = tetrominoColors[pieceType as keyof typeof tetrominoColors];
-                const color = coloredModeAtom() ? originalColor : FROZEN_FIGURE_COLOR; // Серый цвет если цветной режим выключен
-                const material = new THREE.MeshPhongMaterial({
-                    color,
-                    emissive: color,
-                    emissiveIntensity: 0.2,
-                    transparent: true,
-                    opacity: opacity
-                });
-                const cube = new THREE.Mesh(sharedBlockGeometry, material);
-                cube.position.set(x - FIELD_WIDTH / 2 + 0.5, level - FIELD_HEIGHT / 2 + 0.5, z - FIELD_DEPTH / 2 + 0.5);
-                cube.castShadow = true;
-                cube.receiveShadow = true;
-                landedBlocksContainer.add(cube);
-
-                // ИСПРАВЛЕНО: используем shared геометрию для контуров
-                const edgesMaterial = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: opacity });
-                const wireframe = new THREE.LineSegments(sharedEdgesGeometry, edgesMaterial);
-                wireframe.position.copy(cube.position);
-                landedBlocksContainer.add(wireframe);
-            }
-        }
-    }
-}
-
-// Удаление уровня и обрушение верхних блоков
-function removeLevelAndCollapse(level: number) {
-    console.log(`💥 Удаляем уровень ${level}`);
-
-    // Удаляем уровень из игрового поля
-    for (let moveY = level; moveY < FIELD_HEIGHT - 1; moveY++) {
-        gameField[moveY] = gameField[moveY + 1];
-    }
-    gameField[FIELD_HEIGHT - 1] = Array(FIELD_DEPTH).fill(null).map(() => Array(FIELD_WIDTH).fill(null));
-
-    // Начинаем анимацию обрушения
-    startCollapseAnimation(level);
-}
-
-// Анимация обрушения блоков
-function startCollapseAnimation(clearedLevel: number) {
-    const collapseStartTime = Date.now();
-    const collapseDuration = LEVEL_CLEAR_ANIMATION_DURATION * 1.5; // Чуть медленнее
-
-    // Сохраняем начальные позиции всех блоков выше удаленного уровня
-    const blockPositions = new Map<THREE.Object3D, { start: THREE.Vector3, target: THREE.Vector3 }>();
-
-    landedBlocksContainer.children.forEach(child => {
-        const worldPos = new THREE.Vector3();
-        child.getWorldPosition(worldPos);
-        const gameY = Math.round(worldPos.y + FIELD_HEIGHT / 2 - 0.5);
-
-        if (gameY > clearedLevel) {
-            const startPos = worldPos.clone();
-            const targetPos = startPos.clone();
-            targetPos.y -= 1; // Опускаем на один уровень
-
-            blockPositions.set(child, { start: startPos, target: targetPos });
-        }
-    });
-
-    function animateCollapse() {
-        const elapsed = Date.now() - collapseStartTime;
-        const progress = Math.min(elapsed / collapseDuration, 1);
-        const easeProgress = 1 - (1 - progress) ** 3; // ease-out cubic
-
-        // Анимируем падение блоков
-        blockPositions.forEach((positions, block) => {
-            const currentPos = positions.start.clone().lerp(positions.target, easeProgress);
-            block.position.copy(currentPos);
-        });
-
-        if (progress < 1) {
-            requestAnimationFrame(animateCollapse);
-        } else {
-            // Завершаем анимацию - обновляем визуализацию
-            updateLandedVisuals();
-
-            // Обрабатываем следующий уровень или завершаем анимацию
-            processNextLevel();
-        }
-    }
-
-    requestAnimationFrame(animateCollapse);
-}
-
-// Обработка следующего уровня в очереди
-function processNextLevel() {
-    if (levelClearQueue.length > 0) {
-        // Берем следующий уровень из очереди
-        currentClearLevel = levelClearQueue.shift()!;
-
-        // Корректируем номер уровня после удаления предыдущих
-        const levelsCleared = levelClearQueue.length;
-        const adjustedLevel = currentClearLevel - levelsCleared;
-
-        console.log(`➡️ Переходим к следующему уровню: ${currentClearLevel} (скорректированный: ${adjustedLevel})`);
-
-        startLevelBlinking(adjustedLevel);
-    } else {
-        // Все уровни обработаны
-        finishLevelClearAnimation();
-    }
-}
-
-// Завершение анимации очистки уровней
-function finishLevelClearAnimation() {
-    console.log(`✅ Анимация очистки уровней завершена`);
-
-    isLevelClearAnimating = false;
-    levelClearQueue = [];
-    currentClearLevel = -1;
-
-    // Обновляем визуализацию
-    updateLandedVisuals();
-}
 
 function dropPiece() {
     // Если анимация идет, завершаем ее немедленно
     if (isAnimating) {
         isAnimating = false;
-        // Переходим к финальной позиции анимации
-        currentPiecePosition = { ...animationTargetPosition };
+        // Animation will complete automatically with atom state
         updateVisuals();
     }
 
-    // Отменяем текущий lock delay и сбрасываем таймеры
-    cancelLockDelay();
-    resetDropTimer();
+    const piece = currentPieceAtom();
+    if (!piece) return;
 
     // Найти конечную позицию падения
-    let targetY = currentPiecePosition.y;
-    while (canPlacePiece(currentPieceBlocks, { ...currentPiecePosition, y: targetY - 1 })) {
+    let targetY = piece.position.y;
+    while (canPlacePieceCompat(piece.blocks, { ...piece.position, y: targetY - 1 })) {
         targetY--;
     }
 
     // Если есть куда падать - анимируем
-    if (targetY < currentPiecePosition.y) {
+    if (targetY < piece.position.y) {
         isAnimating = true;
         animationStartTime = Date.now();
-        animationStartPosition = { ...currentPiecePosition };
-        animationTargetPosition = { ...currentPiecePosition, y: targetY };
-        currentPiecePosition.y = targetY;
+        animationStartPosition = { ...piece.position };
+        animationTargetPosition = { ...piece.position, y: targetY };
 
-        // После завершения анимации активируем lock delay и запускаем таймер
-        setTimeout(() => {
-            startLockDelay();
-            startDropTimer(); // Возобновляем стандартный таймер после spacebar drop
-        }, PIECE_ANIMATION_DURATION + 16);
-    } else {
-        // Некуда падать - активируем lock delay и запускаем таймер
-        startLockDelay();
-        startDropTimer();
+        // Обновляем позицию через Reatom action
+        currentPieceAtom.move(0, targetY - piece.position.y, 0);
+        // Lock delay автоматически запустится через effect когда фигура коснется земли
     }
+    // Если некуда падать - lock delay уже должен быть активен
 }
 
 let isFieldRotating = false;
@@ -1639,7 +974,7 @@ function rotateField(direction: 1 | -1) {
         } else {
             fieldRotationAtom.set(normalizedNewRotation);
             isFieldRotating = false;
-            if (currentPieceType) updateVisuals();
+            if (currentPieceAtom()) updateVisuals();
             createWallGrids();
             updateWallsOpacity();
         }
@@ -1648,8 +983,9 @@ function rotateField(direction: 1 | -1) {
 }
 
 function createFallingPiece() {
-    const shapes = Object.keys(tetrominoShapes) as (keyof typeof tetrominoShapes)[];
-    const randomShape = shapes[Math.floor(Math.random() * shapes.length)];
+    // Только основные фигуры для заставки, без тестовых
+    const normalShapes: (keyof typeof tetrominoShapes)[] = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+    const randomShape = normalShapes[Math.floor(Math.random() * normalShapes.length)];
     const shape = tetrominoShapes[randomShape];
     const color = tetrominoColors[randomShape];
 
@@ -1829,7 +1165,7 @@ function initializeNextPiecePreview() {
         antialias: true,
         alpha: true
     });
-    
+
     const width = 300;
     const height = 150;
     nextPieceRenderer.setSize(width, height);
@@ -1839,11 +1175,11 @@ function initializeNextPiecePreview() {
 
     // Создаем отдельную сцену для превью
     nextPieceScene = new THREE.Scene();
-    
+
     // Добавляем освещение
     const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
     nextPieceScene.add(ambientLight);
-    
+
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
     directionalLight.position.set(2, 3, 2);
     directionalLight.castShadow = true;
@@ -1894,7 +1230,7 @@ function updateNextPiecePreview() {
     // Восстанавливаем освещение
     const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
     nextPieceScene.add(ambientLight);
-    
+
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
     directionalLight.position.set(2, 3, 2);
     directionalLight.castShadow = true;
@@ -1918,7 +1254,7 @@ function updateNextPiecePreview() {
     // Создаем превью фигуры в отдельной сцене
     const pieceGroup = new THREE.Group();
     console.log(`🧱 Создаём ${blocks.length} блоков для фигуры ${nextPieceType}`);
-    
+
     for (const block of blocks) {
         const cube = new THREE.Mesh(sharedBlockGeometry, material);
         cube.position.set(block.x, block.y, block.z);
@@ -1944,7 +1280,10 @@ function updateNextPiecePreview() {
 // UI Elements
 let startButton: HTMLButtonElement, restartButton: HTMLButtonElement, mainMenuButton: HTMLButtonElement, resumeButton: HTMLButtonElement, pauseMenuButton: HTMLButtonElement, startMenu: HTMLDivElement, pauseMenu: HTMLDivElement, scoreDisplay: HTMLDivElement, scoreValue: HTMLSpanElement, gameOverMenu: HTMLDivElement, perspectiveGrid: HTMLDivElement, cameraModeIndicator: HTMLDivElement, cameraIcon: HTMLDivElement, cameraModeText: HTMLDivElement, controlsHelp: HTMLDivElement, minimapContainer: HTMLDivElement, nextPieceUIContainer: HTMLDivElement, difficultyDisplay: HTMLDivElement, difficultyCube: HTMLDivElement, difficultyValue: HTMLDivElement;
 
-// Game state
+// Lock Delay Timer теперь в models/lock-delay-indicator.ts
+
+// Мини-карта
+let minimapCanvas: HTMLCanvasElement;
 let _prevState: GameStateType = gameStateAtom();
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1971,11 +1310,16 @@ document.addEventListener('DOMContentLoaded', () => {
     difficultyCube = document.getElementById('difficulty-cube') as HTMLDivElement;
     difficultyValue = document.getElementById('difficulty-value') as HTMLDivElement;
 
+    // Lock Delay Timer будет создан динамически когда понадобится
+
     // Инициализация мини-карты
     initializeMinimap();
-    
+
     // Инициализация превью следующей фигуры
     initializeNextPiecePreview();
+
+    // Инициализируем lock delay timer widget
+    lockDelayTimerWidget.initialize();
 
     console.log('📋 UI Elements status:');
     console.log('  startButton:', startButton);
@@ -2082,14 +1426,14 @@ effect(() => {
     if (isPlaying) {
         if (_prevState === GameState.GAME_OVER || _prevState === GameState.MENU) {
             resetGameState();
-            
+
             // Устанавливаем начальную следующую фигуру для предпросмотра
             if (!nextPieceAtom()) {
                 const newPiece = getRandomPiece();
                 nextPieceAtom.update(newPiece);
                 console.log(`🎮 Initialized next piece: ${newPiece}`);
             }
-            
+
             spawnNewPiece();
         }
         updateDynamicCamera();
@@ -2140,7 +1484,7 @@ effect(() => {
 effect(() => {
     const nextPieceType = nextPieceAtom();
     const gameState = gameStateAtom();
-    
+
     // Обновляем превью только когда игра идет или на паузе
     if ((gameState === GameState.PLAYING || gameState === GameState.PAUSED) && nextPieceType) {
         updateNextPiecePreview();
@@ -2185,7 +1529,28 @@ window.addEventListener('keydown', (event) => {
             case 'ArrowLeft': movePieceRelativeToField(-1, 0, 0); break;
             case 'ArrowRight': movePieceRelativeToField(1, 0, 0); break;
             case 'ArrowDown': movePieceRelativeToField(0, 0, 1); break;
-            case 'Space': event.preventDefault(); dropPiece(); break;
+            case 'Space':
+                event.preventDefault();
+                const piece = currentPieceAtom();
+                if (piece) {
+                    // Проверяем может ли фигура упасть еще ниже
+                    const canFallDown = canPlacePieceCompat(piece.blocks, { ...piece.position, y: piece.position.y - 1 });
+
+                    if (canFallDown) {
+                        // Фигура может упасть - обычное падение до дна
+                        dropPiece();
+                    } else {
+                        // Фигура не может упасть и lock delay активен - принудительная фиксация
+                        const lockDelayState = lockDelayAtom();
+                        if (lockDelayState.active) {
+                            lockDelayAtom.forceLock();
+                            gameActions.placePiece();
+                            console.log('⚡ Принудительная фиксация фигуры по пробелу!');
+                        }
+                        // Если lock delay неактивен - ничего не делаем (фигура уже зафиксирована)
+                    }
+                }
+                break;
             case 'KeyS': movePiece(0, -1, 0); break;
             case 'KeyA': rotateField(1); break;
             case 'KeyD': rotateField(-1); break;
@@ -2211,82 +1576,82 @@ window.addEventListener('keydown', (event) => {
                 coloredModeAtom.toggle();
                 console.log(`🎨 Цветной режим: ${coloredModeAtom() ? 'включен' : 'выключен'}`);
                 break;
+            case 'F3':
+                event.preventDefault();
+                lockDelayTimerVisibleAtom.toggle();
+                break;
             case 'KeyQ': {
-                const r = rotateInViewPlane(currentPieceBlocks);
-                if (canPlacePiece(r, currentPiecePosition)) {
-                    cancelLockDelay(); // Отменяем lock delay при успешном вращении
-                    currentPieceBlocks = r;
+                const piece = currentPieceAtom();
+                if (!piece) break;
+                const r = rotateInViewPlane(piece.blocks);
+                if (canPlacePieceCompat(r, piece.position)) {
+                    currentPieceAtom.rotate(r);
                     updateMinimap();
                     updateVisuals();
-                    // Проверяем, находится ли фигура на земле после вращения
-                    if (isOnGround()) startLockDelay();
+                    // Lock delay будет обновлен автоматически через effect
                 }
                 break;
             }
             case 'KeyW': {
-                const r = rotateVertical(currentPieceBlocks);
-                if (canPlacePiece(r, currentPiecePosition)) {
-                    cancelLockDelay(); // Отменяем lock delay при успешном вращении
-                    currentPieceBlocks = r;
+                const piece = currentPieceAtom();
+                if (!piece) break;
+                const r = rotateVertical(piece.blocks);
+                if (canPlacePieceCompat(r, piece.position)) {
+                    currentPieceAtom.rotate(r);
                     updateMinimap();
                     updateVisuals();
-                    // Проверяем, находится ли фигура на земле после вращения
-                    if (isOnGround()) startLockDelay();
+                    // Lock delay будет обновлен автоматически через effect
                 }
                 break;
             }
             case 'KeyE': {
-                const r = rotateSide(currentPieceBlocks);
-                if (canPlacePiece(r, currentPiecePosition)) {
-                    cancelLockDelay(); // Отменяем lock delay при успешном вращении
-                    currentPieceBlocks = r;
+                const piece = currentPieceAtom();
+                if (!piece) break;
+                const r = rotateSide(piece.blocks);
+                if (canPlacePieceCompat(r, piece.position)) {
+                    currentPieceAtom.rotate(r);
                     updateMinimap();
                     updateVisuals();
-                    // Проверяем, находится ли фигура на земле после вращения
-                    if (isOnGround()) startLockDelay();
+                    // Lock delay будет обновлен автоматически через effect
                 }
                 break;
             }
             case 'Digit2':
-                console.log(`🎲 Переключение на уровень 2...`);
                 difficultyLevelAtom.setLevel(2);
-                console.log(`🎲 Атом обновлён. Текущий уровень: ${difficultyLevelAtom()}`);
-                // Небольшая задержка для обновления атома, затем очистка
-                setTimeout(() => {
-                    console.log(`🎲 Запуск очистки с уровнем: ${difficultyLevelAtom()}`);
-                    gameActions.clearLines();
-                    updateVisuals();
-                    updateMinimap();
-                    console.log(`🎲 Очистка завершена`);
-                }, 10);
-                console.log(`Сложность установлена: 2x2x2`);
+                console.log(`🎲 Установлена сложность: 2x2x2 (размер кубов для очистки)`);
                 break;
             case 'Digit3':
                 difficultyLevelAtom.setLevel(3);
-                setTimeout(() => {
-                    gameActions.clearLines();
-                    updateVisuals();
-                    updateMinimap();
-                }, 10);
-                console.log(`Сложность установлена: 3x3x3`);
+                console.log(`🎲 Установлена сложность: 3x3x3 (размер кубов для очистки)`);
                 break;
             case 'Digit4':
                 difficultyLevelAtom.setLevel(4);
-                setTimeout(() => {
-                    gameActions.clearLines();
-                    updateVisuals();
-                    updateMinimap();
-                }, 10);
-                console.log(`Сложность установлена: 4x4x4`);
+                console.log(`🎲 Установлена сложность: 4x4x4 (размер кубов для очистки)`);
                 break;
             case 'Digit5':
                 difficultyLevelAtom.setLevel(5);
-                setTimeout(() => {
-                    gameActions.clearLines();
-                    updateVisuals();
-                    updateMinimap();
-                }, 10);
-                console.log(`Сложность установлена: 5x5x5`);
+                console.log(`🎲 Установлена сложность: 5x5x5 (размер кубов для очистки)`);
+                break;
+            case 'F5':
+                event.preventDefault();
+                gameActions.spawnTestPlane();
+                updateVisuals();
+                updateMinimap();
+                console.log('🧪 Спавн тестового куба 5x5x5 с дыркой в центре');
+                break;
+            case 'F6':
+                event.preventDefault();
+                gameActions.spawnTestCube();
+                updateVisuals();
+                updateMinimap();
+                console.log('🧪 Спавн тестового куба 2x2x2');
+                break;
+            case 'F7':
+                event.preventDefault();
+                gameActions.spawnTestI();
+                updateVisuals();
+                updateMinimap();
+                console.log('🧪 Спавн обычной фигуры I для заполнения дырки');
                 break;
         }
     }
@@ -2356,9 +1721,10 @@ function animate() {
 
             // Просто обновляем позицию группы вместо пересоздания
             pieceVisuals.children.forEach((child, i) => {
-                if (i < currentPieceBlocks.length * 2) { // куб + wireframe
+                const piece = currentPieceAtom();
+                if (piece && i < piece.blocks.length * 2) { // куб + wireframe
                     const blockIndex = Math.floor(i / 2);
-                    const block = currentPieceBlocks[blockIndex];
+                    const block = piece.blocks[blockIndex];
                     const x = renderPosition.x + block.x;
                     const y = renderPosition.y + block.y;
                     const z = renderPosition.z + block.z;
@@ -2374,34 +1740,11 @@ function animate() {
 
             if (progress >= 1) {
                 isAnimating = false;
-                currentPiecePosition = { ...animationTargetPosition };
+                // Animation complete - position is already updated in currentPieceAtom
             }
         }
 
-        // Новая логика падения с раздельными таймерами
-        checkDropTimer(); // Обновляем состояние таймера падения
-
-        // Если стандартный таймер истек
-        if (dropTimerExpired) {
-            const canFallDown = canPlacePiece(currentPieceBlocks, { ...currentPiecePosition, y: currentPiecePosition.y - 1 });
-
-            if (canFallDown) {
-                // Фигура может упасть
-                if (lockDelayActive) {
-                    // Во время lock delay, но можем упасть - роняем и перезапускаем таймеры
-                    cancelLockDelay();
-                }
-                movePiece(0, -1, 0);
-                startDropTimer(); // Запускаем новый цикл стандартного таймера
-            } else {
-                // Фигура не может упасть - включаем lock delay если еще не включен
-                if (!lockDelayActive) {
-                    startLockDelay();
-                }
-                // Сбрасываем флаг истечения, но не перезапускаем таймер (он будет работать в фоне)
-                dropTimerExpired = false;
-            }
-        }
+        // Всё падение управляется через lock delay - основной цикл только для анимаций
 
         // Миникарта анимируется синхронно с основной сценой в animateRotation()
     }
@@ -2415,7 +1758,7 @@ function animate() {
                 child.rotation.y = time * 0.8; // Плавное вращение вокруг Y оси
             }
         });
-        
+
         // Рендерим предпросмотр следующей фигуры
         if (nextPieceRenderer && nextPieceCamera && nextPieceAtom()) {
             nextPieceRenderer.render(nextPieceScene, nextPieceCamera);
@@ -2429,6 +1772,14 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Автоматическое обновление визуализации при изменении текущей фигуры
+effect(() => {
+    const piece = currentPieceAtom();
+    if (piece && gameStateAtom() === GameState.PLAYING) {
+        updateVisuals();
+    }
 });
 
 animate();
