@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <link rel="icon" type="image/svg+xml" href="/vite.svg"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>3D Tetris</title>
+    <style>
+        /* Critical styles to prevent FOUC */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #0f0f23, #1a1a3a);
+        }
+
+        #ui-overlay {
+            visibility: hidden;
+            opacity: 0;
+            transition: visibility 0s, opacity 0.3s ease;
+        }
+
+        #ui-overlay.loaded {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        #scene-canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+<div class="perspective-grid"></div>
+<canvas id="scene-canvas"></canvas>
+<div id="ui-overlay">
+    <div id="start-menu" class="menu">
+        <h1 class="game-title">3D TETRIS</h1>
+        <button id="start-button" class="game-button">START</button>
+    </div>
+    <div id="score-display" class="score-display hidden">Score: <span id="score-value">0</span></div>
+    <div id="difficulty-display" class="difficulty-display hidden">
+        <div class="difficulty-cube" id="difficulty-cube">3</div>
+        <div class="difficulty-text">
+            <div class="difficulty-label">LEVEL</div>
+            <div class="difficulty-value" id="difficulty-value">3x3x3</div>
+        </div>
+    </div>
+    <div id="camera-mode-indicator" class="camera-mode-indicator hidden">
+        <div id="camera-icon" class="camera-icon front">📹</div>
+        <div id="camera-mode-text" class="camera-mode-text">FRONT</div>
+    </div>
+    <div id="pause-menu" class="menu hidden">
+        <h1 class="pause-title">PAUSE</h1>
+        <div class="pause-buttons">
+            <button id="resume-button" class="game-button">RESUME</button>
+            <button id="pause-menu-button" class="game-button">MAIN MENU</button>
+        </div>
+    </div>
+    <div id="game-over" class="menu hidden">
+        <h1 class="game-over-title">GAME OVER</h1>
+        <div class="game-over-buttons">
+            <button id="restart-button" class="game-button">RESTART</button>
+            <button id="main-menu-button" class="game-button">MAIN MENU</button>
+        </div>
+    </div>
+
+    <div id="controls-help" class="controls-help hidden">
+        <div class="controls-section controls-movement">
+            <div class="controls-title">MOVEMENT</div>
+            <div class="control-item">
+                <span class="key" style="visibility: hidden"></span>
+                <span class="key">↑</span>
+                <span class="key" style="visibility: hidden"></span>
+            </div>
+            <div class="control-item">
+                <span class="key">←</span>
+                <span class="key">↓</span>
+                <span class="key">→</span>
+                <span class="description">Move</span>
+            </div>
+            <div class="control-item">
+                <span class="key-2" style="width: 188px">SPACE</span>
+                <span class="description">Drop</span>
+            </div>
+        </div>
+        <div class="controls-section controls-rotation">
+            <div class="controls-title">RATATION</div>
+            <div class="control-item">
+                <span class="key">Q</span>
+                <span class="key">W</span>
+                <span class="key">E</span>
+                <span class="description">Axis X Y Z</span>
+            </div>
+            <div class="control-item">
+                <span class="key">A</span>
+                <span class="key">S</span>
+                <span class="key">D</span>
+                <span class="description">LEFT/DOWN/RIGHT</span>
+            </div>
+        </div>
+        <div class="controls-section controls-camera">
+            <div class="controls-title">CAMERA</div>
+            <div class="control-item">
+                <span class="key-2">ENTER</span>
+                <span class="description">Top/Front View</span>
+            </div>
+        </div>
+        <div class="controls-section controls-pause">
+            <div class="controls-title">GAME</div>
+            <div class="control-item">
+                <span class="key">ESC</span>
+                <span class="description">Pause</span>
+            </div>
+            <div class="control-item">
+                <span class="key">F2</span>
+                <span class="description">Color On/Off</span>
+            </div>
+        </div>
+        <div class="controls-section controls-help-toggle">
+            <div class="controls-title">HELP</div>
+            <div class="control-item">
+                <span class="key">F1</span>
+                <span class="description">On/Off</span>
+            </div>
+        </div>
+        <div class="controls-section controls-difficulty">
+            <div class="controls-title">DIFFICULTY DIMENSIONS</div>
+            <div class="control-item">
+                <span class="key">2</span>
+                <span class="key">3</span>
+                <span class="key">4</span>
+                <span class="key">5</span>
+            </div>
+        </div>
+    </div>
+    <div id="minimap-container" class="minimap-container hidden">
+        <canvas id="minimap-canvas" class="minimap-canvas"></canvas>
+    </div>
+    <div id="next-piece-container" class="next-piece-container hidden">
+        <div class="next-piece-title">NEXT</div>
+        <canvas id="next-piece-canvas" class="next-piece-canvas"></canvas>
+    </div>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
