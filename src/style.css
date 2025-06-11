@@ -574,10 +574,25 @@ body {
 
 /* Подсказка вращения клавишами Q/W/E */
 .rotation-hints {
-  width: 100%;
+  position: fixed;
+  right: 20px;
+  bottom: calc(330px + 240px + 10px);
+  width: 240px;
   height: 60px;
   display: block;
   pointer-events: none;
+}
+.rotation-hints .hint {
+  transform-origin: 30px 30px;
+}
+.hint-q {
+  transform: perspective(80px) rotateY(60deg);
+}
+.hint-w {
+  transform: perspective(80px) rotateX(-60deg);
+}
+.hint-e {
+  transform: none;
 }
 .rotation-hints path {
   stroke: #00ffff;

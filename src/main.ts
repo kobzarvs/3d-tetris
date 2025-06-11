@@ -1455,7 +1455,7 @@ function updateNextPiecePreview() {
 // Запуск анимации вращения миникарты уже не нужен - анимация происходит синхронно в animateRotation()
 
 // UI Elements
-let startButton: HTMLButtonElement, restartButton: HTMLButtonElement, pauseRestartButton: HTMLButtonElement, mainMenuButton: HTMLButtonElement, resumeButton: HTMLButtonElement, pauseMenuButton: HTMLButtonElement, startMenu: HTMLDivElement, pauseMenu: HTMLDivElement, scoreDisplay: HTMLDivElement, scoreValue: HTMLSpanElement, gameOverMenu: HTMLDivElement, perspectiveGrid: HTMLDivElement, cameraModeIndicator: HTMLDivElement, cameraIcon: HTMLDivElement, cameraModeText: HTMLDivElement, controlsHelp: HTMLDivElement, minimapContainer: HTMLDivElement, nextPieceUIContainer: HTMLDivElement, difficultyDisplay: HTMLDivElement, difficultyCube: HTMLDivElement, difficultyValue: HTMLDivElement;
+let startButton: HTMLButtonElement, restartButton: HTMLButtonElement, pauseRestartButton: HTMLButtonElement, mainMenuButton: HTMLButtonElement, resumeButton: HTMLButtonElement, pauseMenuButton: HTMLButtonElement, startMenu: HTMLDivElement, pauseMenu: HTMLDivElement, scoreDisplay: HTMLDivElement, scoreValue: HTMLSpanElement, gameOverMenu: HTMLDivElement, perspectiveGrid: HTMLDivElement, cameraModeIndicator: HTMLDivElement, cameraIcon: HTMLDivElement, cameraModeText: HTMLDivElement, controlsHelp: HTMLDivElement, minimapContainer: HTMLDivElement, nextPieceUIContainer: HTMLDivElement, rotationHintsSvg: SVGSVGElement, difficultyDisplay: HTMLDivElement, difficultyCube: HTMLDivElement, difficultyValue: HTMLDivElement;
 
 // Lock Delay Timer теперь в models/lock-delay-indicator.ts
 
@@ -1503,6 +1503,7 @@ document.addEventListener('DOMContentLoaded', () => {
     controlsHelp = document.getElementById('controls-help') as HTMLDivElement;
     minimapContainer = document.getElementById('minimap-container') as HTMLDivElement;
     nextPieceUIContainer = document.getElementById('next-piece-container') as HTMLDivElement;
+    rotationHintsSvg = document.getElementById('rotation-hints') as unknown as SVGSVGElement;
     difficultyDisplay = document.getElementById('difficulty-display') as HTMLDivElement;
     difficultyCube = document.getElementById('difficulty-cube') as HTMLDivElement;
     difficultyValue = document.getElementById('difficulty-value') as HTMLDivElement;
@@ -1606,6 +1607,9 @@ effect(() => {
     if (nextPieceUIContainer) {
         const shouldShowNextPiece = isPlaying || isPaused;
         nextPieceUIContainer.classList.toggle('hidden', !shouldShowNextPiece);
+        if (rotationHintsSvg) {
+            rotationHintsSvg.classList.toggle('hidden', !shouldShowNextPiece);
+        }
     }
     if (difficultyDisplay) {
         const shouldShowDifficulty = isPlaying || isPaused || isGameOver;

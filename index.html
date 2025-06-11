@@ -149,21 +149,27 @@
     </div>
     <div id="next-piece-container" class="next-piece-container hidden">
         <div class="next-piece-title">NEXT</div>
-        <svg class="rotation-hints" viewBox="0 0 300 60" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-                <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#00ffff" />
-                </marker>
-            </defs>
-            <path d="M20 40 A20 20 0 0 1 60 40" marker-end="url(#arrow)" />
-            <text x="40" y="20">Q</text>
-            <path d="M120 40 A20 20 0 0 1 160 40" marker-end="url(#arrow)" />
-            <text x="140" y="20">W</text>
-            <path d="M220 40 A20 20 0 0 1 260 40" marker-end="url(#arrow)" />
-            <text x="240" y="20">E</text>
-        </svg>
         <canvas id="next-piece-canvas" class="next-piece-canvas"></canvas>
     </div>
+    <svg id="rotation-hints" class="rotation-hints hidden" viewBox="0 0 240 60" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#00ffff" />
+            </marker>
+        </defs>
+        <g class="hint hint-q">
+            <path d="M10 30 A20 20 0 0 1 50 30" marker-end="url(#arrow)" />
+            <text x="30" y="55">Q</text>
+        </g>
+        <g class="hint hint-w" transform="translate(80,0)">
+            <path d="M10 30 A20 20 0 0 1 50 30" marker-end="url(#arrow)" />
+            <text x="30" y="55">W</text>
+        </g>
+        <g class="hint hint-e" transform="translate(160,0)">
+            <path d="M10 30 A20 20 0 0 1 50 30" marker-end="url(#arrow)" />
+            <text x="30" y="55">E</text>
+        </g>
+    </svg>
 </div>
 <script type="module" src="/src/main.ts"></script>
 </body>
