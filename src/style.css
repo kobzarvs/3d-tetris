@@ -262,6 +262,15 @@ body {
     0 0 30px rgba(255, 107, 53, 0.4);
 }
 
+.game-button.selected {
+  background: linear-gradient(45deg, #ff9c42, #ffc370);
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 10px #00ffff,
+    0 0 20px #00ffff,
+    0 7px 20px rgba(255, 107, 53, 0.6);
+}
+
 .game-button:active {
   transform: translateY(0);
 }
