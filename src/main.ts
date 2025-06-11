@@ -111,6 +111,9 @@ const BLOCK_SIZE_Y = BLOCK_SIZE * FIELD_SCALE_Y;
 // Shared geometries for memory optimization
 const sharedBlockGeometry = new THREE.BoxGeometry(BLOCK_SIZE_XZ, BLOCK_SIZE_Y, BLOCK_SIZE_XZ);
 const sharedEdgesGeometry = new THREE.EdgesGeometry(sharedBlockGeometry);
+// Separate geometry for menu pieces to avoid field scaling distortion
+const menuBlockGeometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+const menuEdgesGeometry = new THREE.EdgesGeometry(menuBlockGeometry);
 
 // Простая миникарта с ортогональной камерой над реальным стаканом
 let minimapRenderer: THREE.WebGLRenderer;
@@ -172,6 +175,8 @@ function disposeObject3D(obj: THREE.Object3D) {
             if (meshOrLine.geometry &&
                 meshOrLine.geometry !== sharedBlockGeometry &&
                 meshOrLine.geometry !== sharedEdgesGeometry &&
+                meshOrLine.geometry !== menuBlockGeometry &&
+                meshOrLine.geometry !== menuEdgesGeometry &&
                 meshOrLine.geometry !== sharedPlaneGeometryHorizontal &&
                 meshOrLine.geometry !== sharedPlaneGeometryVertical) {
                 meshOrLine.geometry.dispose();
@@ -1161,23 +1166,22 @@ function createFallingPiece() {
     const color = tetrominoColors[randomShape];
 
     const piece = new THREE.Group();
-    // ИСПРАВЛЕНО: используем shared геометрию вместо создания новой
+    // Материал для фигур в заставке
     const material = new THREE.MeshPhongMaterial({
         color: color,
         emissive: color,
         emissiveIntensity: 0.2
     });
 
-    // Create the tetromino from blocks
+    // Create the tetromino from blocks using unscaled geometry for menu
     shape.forEach(block => {
-        const blockMesh = new THREE.Mesh(sharedBlockGeometry, material);
+        const blockMesh = new THREE.Mesh(menuBlockGeometry, material);
         blockMesh.position.set(block.x, block.y, block.z);
         blockMesh.castShadow = true;
         blockMesh.receiveShadow = true;
         piece.add(blockMesh);
 
-        // ИСПРАВЛЕНО: используем shared геометрию для контуров
-        const wireframe = new THREE.LineSegments(sharedEdgesGeometry, materialPools.edges);
+        const wireframe = new THREE.LineSegments(menuEdgesGeometry, materialPools.edges);
         wireframe.position.copy(blockMesh.position);
         piece.add(wireframe);
     });
