@@ -1303,7 +1303,7 @@ function initializeMinimap() {
 
     // Создаем ортографическую камеру для вида сверху на реальный стакан
     const aspect = 1; // Квадратная миникарта 120x120
-    const size = FIELD_WIDTH / 2 + 1;
+    const size = (FIELD_WIDTH * FIELD_SCALE_XZ) / 2 + 1;
     minimapCamera = new THREE.OrthographicCamera(
         -size * aspect, size * aspect,
         size, -size,
@@ -1424,6 +1424,7 @@ function updateNextPiecePreview() {
 
     // Создаем превью фигуры в отдельной сцене
     const pieceGroup = new THREE.Group();
+    pieceGroup.scale.set(1 / FIELD_SCALE_XZ, 1 / FIELD_SCALE_Y, 1 / FIELD_SCALE_XZ);
     console.log(`🧱 Создаём ${blocks.length} блоков для фигуры ${nextPieceType}`);
 
     for (const block of blocks) {
