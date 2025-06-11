@@ -1953,7 +1953,11 @@ function animate() {
                     const x = renderPosition.x + block.x;
                     const y = renderPosition.y + block.y;
                     const z = renderPosition.z + block.z;
-                    child.position.set(x - FIELD_WIDTH / 2 + 0.5, y - FIELD_HEIGHT / 2 + 0.5, z - FIELD_DEPTH / 2 + 0.5);
+                    child.position.set(
+                        (x - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
+                        (y - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                        (z - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
+                    );
                 }
             });
 
