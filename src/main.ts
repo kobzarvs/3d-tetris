@@ -124,6 +124,11 @@ let nextPieceRenderer: THREE.WebGLRenderer;
 let nextPieceCamera: THREE.PerspectiveCamera;
 let nextPieceScene: THREE.Scene;
 
+// Rotation hint renderer
+let rotationHintsRenderer: THREE.WebGLRenderer;
+let rotationHintsCamera: THREE.PerspectiveCamera;
+let rotationHintsScene: THREE.Scene;
+
 // Material pools for memory optimization
 const materialPools = {
     blocks: new Map<number, THREE.MeshPhongMaterial>(),
@@ -1370,6 +1375,64 @@ function initializeNextPiecePreview() {
     console.log('🔮 Next piece preview инициализировано');
 }
 
+// Helper to create semicircle arrow in XY plane
+function createSemiCircle(radius: number, clockwise: boolean, color: number): THREE.Group {
+    const segments = 32;
+    const points: THREE.Vector3[] = [];
+    const start = clockwise ? 0 : Math.PI;
+    const end = clockwise ? Math.PI : 0;
+    for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const angle = start + (end - start) * t;
+        points.push(new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, 0));
+    }
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color }));
+    const arrowGeom = new THREE.ConeGeometry(0.08, 0.2, 8);
+    const arrowMat = new THREE.MeshBasicMaterial({ color });
+    const arrow = new THREE.Mesh(arrowGeom, arrowMat);
+    const finalAngle = end;
+    arrow.position.set(Math.cos(finalAngle) * radius, Math.sin(finalAngle) * radius, 0);
+    arrow.rotation.z = finalAngle + (clockwise ? -Math.PI / 2 : Math.PI / 2);
+
+    const group = new THREE.Group();
+    group.add(line);
+    group.add(arrow);
+    return group;
+}
+
+function initializeRotationHints() {
+    const canvas = document.getElementById('rotation-hints-canvas') as HTMLCanvasElement;
+    if (!canvas) return;
+
+    rotationHintsRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    const width = 240;
+    const height = 60;
+    rotationHintsRenderer.setSize(width, height);
+    rotationHintsRenderer.setClearColor(0x000000, 0);
+
+    rotationHintsScene = new THREE.Scene();
+    rotationHintsCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10);
+    rotationHintsCamera.position.set(0, 0, 5);
+
+    const color = 0x00ffff;
+
+    const qArc = createSemiCircle(0.8, true, color);
+    qArc.position.x = -2;
+    rotationHintsScene.add(qArc);
+
+    const wArc = createSemiCircle(0.8, false, color);
+    wArc.rotation.x = Math.PI / 2; // XZ plane
+    rotationHintsScene.add(wArc);
+
+    const eArc = createSemiCircle(0.8, true, color);
+    eArc.position.x = 2;
+    eArc.rotation.y = Math.PI / 2; // YZ plane
+    rotationHintsScene.add(eArc);
+
+    rotationHintsRenderer.render(rotationHintsScene, rotationHintsCamera);
+}
+
 // Простая миникарта с ортогональной камерой над реальным стаканом
 function updateMinimap() {
     if (!minimapRenderer || !minimapCamera) return;
@@ -1455,7 +1518,7 @@ function updateNextPiecePreview() {
 // Запуск анимации вращения миникарты уже не нужен - анимация происходит синхронно в animateRotation()
 
 // UI Elements
-let startButton: HTMLButtonElement, restartButton: HTMLButtonElement, pauseRestartButton: HTMLButtonElement, mainMenuButton: HTMLButtonElement, resumeButton: HTMLButtonElement, pauseMenuButton: HTMLButtonElement, startMenu: HTMLDivElement, pauseMenu: HTMLDivElement, scoreDisplay: HTMLDivElement, scoreValue: HTMLSpanElement, gameOverMenu: HTMLDivElement, perspectiveGrid: HTMLDivElement, cameraModeIndicator: HTMLDivElement, cameraIcon: HTMLDivElement, cameraModeText: HTMLDivElement, controlsHelp: HTMLDivElement, minimapContainer: HTMLDivElement, nextPieceUIContainer: HTMLDivElement, rotationHintsSvg: SVGSVGElement, difficultyDisplay: HTMLDivElement, difficultyCube: HTMLDivElement, difficultyValue: HTMLDivElement;
+let startButton: HTMLButtonElement, restartButton: HTMLButtonElement, pauseRestartButton: HTMLButtonElement, mainMenuButton: HTMLButtonElement, resumeButton: HTMLButtonElement, pauseMenuButton: HTMLButtonElement, startMenu: HTMLDivElement, pauseMenu: HTMLDivElement, scoreDisplay: HTMLDivElement, scoreValue: HTMLSpanElement, gameOverMenu: HTMLDivElement, perspectiveGrid: HTMLDivElement, cameraModeIndicator: HTMLDivElement, cameraIcon: HTMLDivElement, cameraModeText: HTMLDivElement, controlsHelp: HTMLDivElement, minimapContainer: HTMLDivElement, nextPieceUIContainer: HTMLDivElement, rotationHintsContainer: HTMLDivElement, difficultyDisplay: HTMLDivElement, difficultyCube: HTMLDivElement, difficultyValue: HTMLDivElement;
 
 // Lock Delay Timer теперь в models/lock-delay-indicator.ts
 
@@ -1503,7 +1566,7 @@ document.addEventListener('DOMContentLoaded', () => {
     controlsHelp = document.getElementById('controls-help') as HTMLDivElement;
     minimapContainer = document.getElementById('minimap-container') as HTMLDivElement;
     nextPieceUIContainer = document.getElementById('next-piece-container') as HTMLDivElement;
-    rotationHintsSvg = document.getElementById('rotation-hints') as unknown as SVGSVGElement;
+    rotationHintsContainer = document.getElementById('rotation-hints') as HTMLDivElement;
     difficultyDisplay = document.getElementById('difficulty-display') as HTMLDivElement;
     difficultyCube = document.getElementById('difficulty-cube') as HTMLDivElement;
     difficultyValue = document.getElementById('difficulty-value') as HTMLDivElement;
@@ -1515,6 +1578,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Инициализация превью следующей фигуры
     initializeNextPiecePreview();
+
+    // Инициализация подсказок вращения
+    initializeRotationHints();
 
     // Инициализируем lock delay timer widget
     lockDelayTimerWidget.initialize();
@@ -1607,8 +1673,8 @@ effect(() => {
     if (nextPieceUIContainer) {
         const shouldShowNextPiece = isPlaying || isPaused;
         nextPieceUIContainer.classList.toggle('hidden', !shouldShowNextPiece);
-        if (rotationHintsSvg) {
-            rotationHintsSvg.classList.toggle('hidden', !shouldShowNextPiece);
+        if (rotationHintsContainer) {
+            rotationHintsContainer.classList.toggle('hidden', !shouldShowNextPiece);
         }
     }
     if (difficultyDisplay) {
@@ -2001,6 +2067,9 @@ function animate() {
         // Рендерим предпросмотр следующей фигуры
         if (nextPieceRenderer && nextPieceCamera && nextPieceAtom()) {
             nextPieceRenderer.render(nextPieceScene, nextPieceCamera);
+        }
+        if (rotationHintsRenderer && rotationHintsCamera) {
+            rotationHintsRenderer.render(rotationHintsScene, rotationHintsCamera);
         }
     }
 

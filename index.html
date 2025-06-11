@@ -151,25 +151,12 @@
         <div class="next-piece-title">NEXT</div>
         <canvas id="next-piece-canvas" class="next-piece-canvas"></canvas>
     </div>
-    <svg id="rotation-hints" class="rotation-hints hidden" viewBox="0 0 240 60" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-            <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#00ffff" />
-            </marker>
-        </defs>
-        <g class="hint hint-q">
-            <path d="M10 30 A20 20 0 0 1 50 30" marker-end="url(#arrow)" />
-            <text x="30" y="55">Q</text>
-        </g>
-        <g class="hint hint-w" transform="translate(80,0)">
-            <path d="M10 30 A20 20 0 0 1 50 30" marker-end="url(#arrow)" />
-            <text x="30" y="55">W</text>
-        </g>
-        <g class="hint hint-e" transform="translate(160,0)">
-            <path d="M10 30 A20 20 0 0 1 50 30" marker-end="url(#arrow)" />
-            <text x="30" y="55">E</text>
-        </g>
-    </svg>
+    <div id="rotation-hints" class="rotation-hints-container hidden">
+        <canvas id="rotation-hints-canvas" class="rotation-hints-canvas"></canvas>
+        <div class="rotation-label label-q">Q</div>
+        <div class="rotation-label label-w">W</div>
+        <div class="rotation-label label-e">E</div>
+    </div>
 </div>
 <script type="module" src="/src/main.ts"></script>
 </body>
