@@ -10,7 +10,7 @@ import { LOCK_DELAY_TIME } from '../constants.ts';
 export class LockDelayTimerWidget {
     private container: HTMLDivElement | null = null;
     private bar: HTMLDivElement | null = null;
-    private intervalId: number | null = null;
+    private animationFrameId: number | null = null;
 
     constructor() {
         this.initializeEffect();
@@ -81,15 +81,13 @@ export class LockDelayTimerWidget {
      * Запускает визуальное обновление прогресса таймера
      */
     private startVisualUpdate(): void {
-        // Очищаем предыдущий интервал
-        // if (this.intervalId) {
-        //     clearTimeout(this.intervalId);
-        // }
+        if (this.animationFrameId !== null) {
+            cancelAnimationFrame(this.animationFrameId);
+        }
 
         const renderLoop = () => {
             const currentLockDelay = lockDelayAtom();
             if (!currentLockDelay.active || !this.bar) {
-                // this.stopVisualUpdate();
                 return;
             }
 
@@ -103,7 +101,7 @@ export class LockDelayTimerWidget {
                 elapsed = performance.now() - currentLockDelay.startTime - currentLockDelay.totalPausedTime;
             }
 
-            const progress = Math.min(elapsed / LOCK_DELAY_TIME * 100, 100);
+            const progress = Math.min((elapsed / LOCK_DELAY_TIME) * 100, 100);
 
             // Обновляем ширину полоски
             this.bar.style.width = `${progress}%`;
@@ -111,21 +109,19 @@ export class LockDelayTimerWidget {
             // Обновляем цвет в зависимости от прогресса
             this.updateProgressColor(progress, currentLockDelay.paused);
 
-            requestAnimationFrame(renderLoop);
+            this.animationFrameId = requestAnimationFrame(renderLoop);
         };
 
-        requestAnimationFrame(renderLoop);
-        // Запускаем интервал для обновления визуального прогресса
-        // this.intervalId = setTimeout(renderLoop, 16); // Обновляем каждые 50мс для плавности
+        this.animationFrameId = requestAnimationFrame(renderLoop);
     }
 
     /**
      * Останавливает визуальное обновление прогресса
      */
     private stopVisualUpdate(): void {
-        if (this.intervalId) {
-            // clearInterval(this.intervalId);
-            this.intervalId = null;
+        if (this.animationFrameId !== null) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
         }
     }
 
