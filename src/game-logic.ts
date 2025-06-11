@@ -215,7 +215,11 @@ export const currentPieceAtom = atom<Piece | null>(null).actions((target) => ({
     spawn: (type: PieceType) => target.set({
         type,
         blocks: [...tetrominoShapes[type]],
-        position: { x: 5, y: FIELD_HEIGHT - 2, z: 5 }
+        position: {
+            x: Math.floor(FIELD_WIDTH / 2),
+            y: FIELD_HEIGHT - 2,
+            z: Math.floor(FIELD_DEPTH / 2)
+        }
     }),
     move: (dx: number, dy: number, dz: number) => target.set(piece => {
         if (!piece) return piece;
@@ -751,7 +755,11 @@ export const gameActions = {
         const piece = {
             type: pieceType,
             blocks: [...tetrominoShapes[pieceType]],
-            position: { x: 5, y: FIELD_HEIGHT - 2, z: 5 }
+            position: {
+                x: Math.floor(FIELD_WIDTH / 2),
+                y: FIELD_HEIGHT - 2,
+                z: Math.floor(FIELD_DEPTH / 2)
+            }
         };
 
         nextPieceAtom.update(getRandomPiece());

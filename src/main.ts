@@ -37,6 +37,8 @@ import {
     DYNAMIC_CAMERA_SMOOTH,
     FIELD_TOP_Y,
     FIELD_BOTTOM_Y,
+    FIELD_SCALE_XZ,
+    FIELD_SCALE_Y,
     FROZEN_FIGURE_COLOR,
     MINIMAP_SIZE,
     CAMERA_START_Z,
@@ -342,7 +344,11 @@ function spawnNewPiece() {
 
     // Создаем временную фигуру для проверки коллизий ПЕРЕД spawn
     const testBlocks = [...tetrominoShapes[pieceType]];
-    const testPosition = { x: 5, y: FIELD_HEIGHT - 2, z: 5 };
+    const testPosition = {
+        x: Math.floor(FIELD_WIDTH / 2),
+        y: FIELD_HEIGHT - 2,
+        z: Math.floor(FIELD_DEPTH / 2)
+    };
 
     // Проверяем, можем ли разместить фигуру
     if (!canPlacePieceCompat(testBlocks, testPosition)) {
@@ -389,7 +395,11 @@ function updateVisuals() {
             const x = renderPosition.x + block.x;
             const y = renderPosition.y + block.y;
             const z = renderPosition.z + block.z;
-            cube.position.set(x - FIELD_WIDTH / 2 + 0.5, y - FIELD_HEIGHT / 2 + 0.5, z - FIELD_DEPTH / 2 + 0.5);
+            cube.position.set(
+                (x - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
+                (y - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                (z - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
+            );
             cube.castShadow = true;
             cube.receiveShadow = true;
             pieceVisuals.add(cube);
@@ -434,10 +444,16 @@ function createWallGrids() {
 
     bottomGridGroup = new THREE.Group();
     const bottomGeometry = new THREE.BufferGeometry();
-    const bottomVertices = [];
-    const bottomY = -FIELD_HEIGHT / 2 + 0.005; // Чуть выше дна
-    for (let x = 0; x <= FIELD_WIDTH; x++) bottomVertices.push(x - FIELD_WIDTH / 2, bottomY, -FIELD_DEPTH / 2, x - FIELD_WIDTH / 2, bottomY, FIELD_DEPTH / 2);
-    for (let z = 0; z <= FIELD_DEPTH; z++) bottomVertices.push(-FIELD_WIDTH / 2, bottomY, z - FIELD_DEPTH / 2, FIELD_WIDTH / 2, bottomY, z - FIELD_DEPTH / 2);
+    const bottomVertices: number[] = [];
+    const bottomY = (-FIELD_HEIGHT / 2 + 0.005) * FIELD_SCALE_Y; // Чуть выше дна
+    for (let x = 0; x <= FIELD_WIDTH; x++) bottomVertices.push(
+        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ, bottomY, -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
+        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ, bottomY, (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
+    );
+    for (let z = 0; z <= FIELD_DEPTH; z++) bottomVertices.push(
+        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2, bottomY, (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ,
+        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2, bottomY, (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ
+    );
     bottomGeometry.setAttribute('position', new THREE.Float32BufferAttribute(bottomVertices, 3));
     // Черный цвет только для сетки на дне
     const bottomGridMaterial = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.8 });
@@ -471,18 +487,39 @@ function createWallGrids() {
 
 function createLeftWallGrid(material: THREE.LineBasicMaterial) {
     leftWallGridGroup = new THREE.Group();
-    const vertices = [];
-    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(-FIELD_WIDTH / 2, y - FIELD_HEIGHT / 2, -FIELD_DEPTH / 2, -FIELD_WIDTH / 2, y - FIELD_HEIGHT / 2, FIELD_DEPTH / 2);
-    for (let z = 0; z <= FIELD_DEPTH; z++) vertices.push(-FIELD_WIDTH / 2, -FIELD_HEIGHT / 2, z - FIELD_DEPTH / 2, -FIELD_WIDTH / 2, FIELD_HEIGHT / 2, z - FIELD_DEPTH / 2);
+    const vertices: number[] = [];
+    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(
+        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
+        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
+        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
+    );
+    for (let z = 0; z <= FIELD_DEPTH; z++) vertices.push(
+        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        -FIELD_HEIGHT * FIELD_SCALE_Y / 2,
+        (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ,
+        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        FIELD_HEIGHT * FIELD_SCALE_Y / 2,
+        (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ
+    );
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     const grid = new THREE.LineSegments(geometry, material);
     leftWallGridGroup.add(grid);
 
     // Добавляем желтую линию спавна (минимальная высота для нижних блоков фигур)
-    const spawnY = (FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2;
+    const spawnY = ((FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2) * FIELD_SCALE_Y;
     const spawnGeometry = new THREE.BufferGeometry();
-    const spawnVertices = [-FIELD_WIDTH / 2, spawnY, -FIELD_DEPTH / 2, -FIELD_WIDTH / 2, spawnY, FIELD_DEPTH / 2];
+    const spawnVertices = [
+        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        spawnY,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
+        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        spawnY,
+        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
+    ];
     spawnGeometry.setAttribute('position', new THREE.Float32BufferAttribute(spawnVertices, 3));
     const spawnMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
     const spawnLine = new THREE.LineSegments(spawnGeometry, spawnMaterial);
@@ -493,18 +530,39 @@ function createLeftWallGrid(material: THREE.LineBasicMaterial) {
 
 function createRightWallGrid(material: THREE.LineBasicMaterial) {
     rightWallGridGroup = new THREE.Group();
-    const vertices = [];
-    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(FIELD_WIDTH / 2, y - FIELD_HEIGHT / 2, -FIELD_DEPTH / 2, FIELD_WIDTH / 2, y - FIELD_HEIGHT / 2, FIELD_DEPTH / 2);
-    for (let z = 0; z <= FIELD_DEPTH; z++) vertices.push(FIELD_WIDTH / 2, -FIELD_HEIGHT / 2, z - FIELD_DEPTH / 2, FIELD_WIDTH / 2, FIELD_HEIGHT / 2, z - FIELD_DEPTH / 2);
+    const vertices: number[] = [];
+    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(
+        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
+        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
+        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
+    );
+    for (let z = 0; z <= FIELD_DEPTH; z++) vertices.push(
+        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        -FIELD_HEIGHT * FIELD_SCALE_Y / 2,
+        (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ,
+        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        FIELD_HEIGHT * FIELD_SCALE_Y / 2,
+        (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ
+    );
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     const grid = new THREE.LineSegments(geometry, material);
     rightWallGridGroup.add(grid);
 
     // Добавляем желтую линию спавна
-    const spawnY = (FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2;
+    const spawnY = ((FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2) * FIELD_SCALE_Y;
     const spawnGeometry = new THREE.BufferGeometry();
-    const spawnVertices = [FIELD_WIDTH / 2, spawnY, -FIELD_DEPTH / 2, FIELD_WIDTH / 2, spawnY, FIELD_DEPTH / 2];
+    const spawnVertices = [
+        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        spawnY,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
+        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        spawnY,
+        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
+    ];
     spawnGeometry.setAttribute('position', new THREE.Float32BufferAttribute(spawnVertices, 3));
     const spawnMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
     const spawnLine = new THREE.LineSegments(spawnGeometry, spawnMaterial);
@@ -515,18 +573,39 @@ function createRightWallGrid(material: THREE.LineBasicMaterial) {
 
 function createBackWallGrid(material: THREE.LineBasicMaterial) {
     backWallGridGroup = new THREE.Group();
-    const vertices = [];
-    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(-FIELD_WIDTH / 2, y - FIELD_HEIGHT / 2, FIELD_DEPTH / 2, FIELD_WIDTH / 2, y - FIELD_HEIGHT / 2, FIELD_DEPTH / 2);
-    for (let x = 0; x <= FIELD_WIDTH; x++) vertices.push(x - FIELD_WIDTH / 2, -FIELD_HEIGHT / 2, FIELD_DEPTH / 2, x - FIELD_WIDTH / 2, FIELD_HEIGHT / 2, FIELD_DEPTH / 2);
+    const vertices: number[] = [];
+    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(
+        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
+        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
+        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
+        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
+    );
+    for (let x = 0; x <= FIELD_WIDTH; x++) vertices.push(
+        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ,
+        -FIELD_HEIGHT * FIELD_SCALE_Y / 2,
+        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
+        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ,
+        FIELD_HEIGHT * FIELD_SCALE_Y / 2,
+        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
+    );
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     const grid = new THREE.LineSegments(geometry, material);
     backWallGridGroup.add(grid);
 
     // Добавляем желтую линию спавна
-    const spawnY = (FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2;
+    const spawnY = ((FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2) * FIELD_SCALE_Y;
     const spawnGeometry = new THREE.BufferGeometry();
-    const spawnVertices = [-FIELD_WIDTH / 2, spawnY, FIELD_DEPTH / 2, FIELD_WIDTH / 2, spawnY, FIELD_DEPTH / 2];
+    const spawnVertices = [
+        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        spawnY,
+        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
+        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        spawnY,
+        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
+    ];
     spawnGeometry.setAttribute('position', new THREE.Float32BufferAttribute(spawnVertices, 3));
     const spawnMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
     const spawnLine = new THREE.LineSegments(spawnGeometry, spawnMaterial);
@@ -537,18 +616,39 @@ function createBackWallGrid(material: THREE.LineBasicMaterial) {
 
 function createFrontWallGrid(material: THREE.LineBasicMaterial) {
     frontWallGridGroup = new THREE.Group();
-    const vertices = [];
-    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(-FIELD_WIDTH / 2, y - FIELD_HEIGHT / 2, -FIELD_DEPTH / 2, FIELD_WIDTH / 2, y - FIELD_HEIGHT / 2, -FIELD_DEPTH / 2);
-    for (let x = 0; x <= FIELD_WIDTH; x++) vertices.push(x - FIELD_WIDTH / 2, -FIELD_HEIGHT / 2, -FIELD_DEPTH / 2, x - FIELD_WIDTH / 2, FIELD_HEIGHT / 2, -FIELD_DEPTH / 2);
+    const vertices: number[] = [];
+    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(
+        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
+        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2
+    );
+    for (let x = 0; x <= FIELD_WIDTH; x++) vertices.push(
+        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ,
+        -FIELD_HEIGHT * FIELD_SCALE_Y / 2,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
+        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ,
+        FIELD_HEIGHT * FIELD_SCALE_Y / 2,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2
+    );
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     const grid = new THREE.LineSegments(geometry, material);
     frontWallGridGroup.add(grid);
 
     // Добавляем желтую линию спавна
-    const spawnY = (FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2;
+    const spawnY = ((FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2) * FIELD_SCALE_Y;
     const spawnGeometry = new THREE.BufferGeometry();
-    const spawnVertices = [-FIELD_WIDTH / 2, spawnY, -FIELD_DEPTH / 2, FIELD_WIDTH / 2, spawnY, -FIELD_DEPTH / 2];
+    const spawnVertices = [
+        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        spawnY,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
+        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
+        spawnY,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2
+    ];
     spawnGeometry.setAttribute('position', new THREE.Float32BufferAttribute(spawnVertices, 3));
     const spawnMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
     const spawnLine = new THREE.LineSegments(spawnGeometry, spawnMaterial);
@@ -575,7 +675,11 @@ function updateLandedVisuals() {
                     const color = coloredModeAtom() ? originalColor : FROZEN_FIGURE_COLOR; // Серый цвет если цветной режим выключен
                     const material = getBlockMaterial(color);
                     const cube = new THREE.Mesh(sharedBlockGeometry, material);
-                    cube.position.set(x - FIELD_WIDTH / 2 + 0.5, y - FIELD_HEIGHT / 2 + 0.5, z - FIELD_DEPTH / 2 + 0.5);
+                    cube.position.set(
+                        (x - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
+                        (y - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                        (z - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
+                    );
                     cube.castShadow = true;
                     cube.receiveShadow = true;
                     landedBlocksContainer.add(cube);
@@ -683,9 +787,9 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
             const whitePlane = new THREE.Mesh(sharedPlaneGeometry, materialPools.projectionWhite);
             whitePlane.rotation.x = -Math.PI / 2;
             whitePlane.position.set(
-                worldX - FIELD_WIDTH / 2 + 0.5,
-                -FIELD_HEIGHT / 2 + 0.01,
-                worldZ - FIELD_DEPTH / 2 + 0.5
+                (worldX - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
+                -FIELD_HEIGHT * FIELD_SCALE_Y / 2 + 0.01,
+                (worldZ - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
             );
             bottomProjectionGroup.add(whitePlane);
         }
@@ -695,29 +799,29 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
             const whitePlane = new THREE.Mesh(sharedPlaneGeometry, materialPools.projectionWhite);
             whitePlane.rotation.x = -Math.PI / 2;
             whitePlane.position.set(
-                worldX - FIELD_WIDTH / 2 + 0.5,
-                underBlockY - FIELD_HEIGHT / 2 + 0.5 + BLOCK_SIZE / 2 + 0.001,
-                worldZ - FIELD_DEPTH / 2 + 0.5
+                (worldX - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
+                (underBlockY - FIELD_HEIGHT / 2 + 0.5 + BLOCK_SIZE / 2 + 0.001) * FIELD_SCALE_Y,
+                (worldZ - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
             );
             bottomProjectionGroup.add(whitePlane);
         }
         // Если под блоком пустота - ищем первое препятствие/дно ниже
         else {
             // Красная проекция - ищем первое препятствие ниже финальной позиции блока
-            let redProjectionY = -FIELD_HEIGHT / 2 + 0.01; // По умолчанию на дне
+            let redProjectionY = -FIELD_HEIGHT * FIELD_SCALE_Y / 2 + 0.01; // По умолчанию на дне
 
             for (let y = underBlockY - 1; y >= 0; y--) {
                 if (gameFieldAtom()[y] && gameFieldAtom()[y][worldZ][worldX] !== null) {
-                    redProjectionY = y - FIELD_HEIGHT / 2 + 0.5 + BLOCK_SIZE / 2 + 0.001;
+                    redProjectionY = (y - FIELD_HEIGHT / 2 + 0.5 + BLOCK_SIZE / 2 + 0.001) * FIELD_SCALE_Y;
                     break;
                 }
             }
             const redPlane = new THREE.Mesh(sharedPlaneGeometry, materialPools.projectionRed);
             redPlane.rotation.x = -Math.PI / 2;
             redPlane.position.set(
-                worldX - FIELD_WIDTH / 2 + 0.5,
+                (worldX - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
                 redProjectionY,
-                worldZ - FIELD_DEPTH / 2 + 0.5
+                (worldZ - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
             );
             bottomProjectionGroup.add(redPlane);
         }
@@ -735,33 +839,81 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
 
     switch (rotationSteps) {
         case 0:
-            backWallCoords = (block) => ({ x: Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: -FIELD_DEPTH / 2 - 0.01 });
-            leftWallCoords = (block) => ({ x: -FIELD_WIDTH / 2 - 0.01, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5 });
-            rightWallCoords = (block) => ({ x: FIELD_WIDTH / 2 + 0.01, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5 });
+            backWallCoords = (block) => ({
+                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 - 0.01
+            });
+            leftWallCoords = (block) => ({
+                x: -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2 - 0.01,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
+            });
+            rightWallCoords = (block) => ({
+                x: (FIELD_WIDTH * FIELD_SCALE_XZ) / 2 + 0.01,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
+            });
             backWallRotation = { x: 0, y: Math.PI, z: 0 };
             leftWallRotation = { x: 0, y: Math.PI / 2, z: 0 };
             rightWallRotation = { x: 0, y: -Math.PI / 2, z: 0 };
             break;
         case 1:
-            backWallCoords = (block) => ({ x: FIELD_WIDTH / 2 + 0.01, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5 });
-            leftWallCoords = (block) => ({ x: Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: FIELD_DEPTH / 2 + 0.01 });
-            rightWallCoords = (block) => ({ x: Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: -FIELD_DEPTH / 2 - 0.01 });
+            backWallCoords = (block) => ({
+                x: (FIELD_WIDTH * FIELD_SCALE_XZ) / 2 + 0.01,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
+            });
+            leftWallCoords = (block) => ({
+                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: (FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 0.01
+            });
+            rightWallCoords = (block) => ({
+                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 - 0.01
+            });
             backWallRotation = { x: 0, y: -Math.PI / 2, z: 0 };
             leftWallRotation = { x: 0, y: 0, z: 0 };
             rightWallRotation = { x: 0, y: Math.PI, z: 0 };
             break;
         case 2:
-            backWallCoords = (block) => ({ x: Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: FIELD_DEPTH / 2 + 0.01 });
-            leftWallCoords = (block) => ({ x: FIELD_WIDTH / 2 + 0.01, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5 });
-            rightWallCoords = (block) => ({ x: -FIELD_WIDTH / 2 - 0.01, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5 });
+            backWallCoords = (block) => ({
+                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: (FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 0.01
+            });
+            leftWallCoords = (block) => ({
+                x: (FIELD_WIDTH * FIELD_SCALE_XZ) / 2 + 0.01,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
+            });
+            rightWallCoords = (block) => ({
+                x: -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2 - 0.01,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
+            });
             backWallRotation = { x: 0, y: 0, z: 0 };
             leftWallRotation = { x: 0, y: -Math.PI / 2, z: 0 };
             rightWallRotation = { x: 0, y: Math.PI / 2, z: 0 };
             break;
         case 3:
-            backWallCoords = (block) => ({ x: -FIELD_WIDTH / 2 - 0.01, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5 });
-            leftWallCoords = (block) => ({ x: Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: -FIELD_DEPTH / 2 - 0.01 });
-            rightWallCoords = (block) => ({ x: Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5, y: Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5, z: FIELD_DEPTH / 2 + 0.01 });
+            backWallCoords = (block) => ({
+                x: -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2 - 0.01,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
+            });
+            leftWallCoords = (block) => ({
+                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 - 0.01
+            });
+            rightWallCoords = (block) => ({
+                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
+                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
+                z: (FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 0.01
+            });
             backWallRotation = { x: 0, y: Math.PI / 2, z: 0 };
             leftWallRotation = { x: 0, y: Math.PI, z: 0 };
             rightWallRotation = { x: 0, y: 0, z: 0 };
@@ -800,7 +952,7 @@ function toggleAxesHelper() {
         axesHelper = null;
     } else {
         axesHelper = new THREE.AxesHelper(3);
-        axesHelper.position.set(0, -FIELD_HEIGHT / 2 + 2, 0); // Подняли на 2 единицы выше дна
+        axesHelper.position.set(0, (-FIELD_HEIGHT / 2 + 2) * FIELD_SCALE_Y, 0); // Подняли на 2 единицы выше дна
         fieldContainer.add(axesHelper);
     }
 }
@@ -863,23 +1015,23 @@ function createFieldBoundaries() {
         return wall;
     };
 
-    frontWallMesh = createWall(new THREE.PlaneGeometry(FIELD_WIDTH, FIELD_HEIGHT), [0, 0, -FIELD_DEPTH / 2], [0, 0, 0]);
-    backWallMesh = createWall(new THREE.PlaneGeometry(FIELD_WIDTH, FIELD_HEIGHT), [0, 0, FIELD_DEPTH / 2], [0, Math.PI, 0]);
-    leftWallMesh = createWall(new THREE.PlaneGeometry(FIELD_DEPTH, FIELD_HEIGHT), [-FIELD_WIDTH / 2, 0, 0], [0, Math.PI / 2, 0]);
-    rightWallMesh = createWall(new THREE.PlaneGeometry(FIELD_DEPTH, FIELD_HEIGHT), [FIELD_WIDTH / 2, 0, 0], [0, -Math.PI / 2, 0]);
+    frontWallMesh = createWall(new THREE.PlaneGeometry(FIELD_WIDTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y), [0, 0, -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2], [0, 0, 0]);
+    backWallMesh = createWall(new THREE.PlaneGeometry(FIELD_WIDTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y), [0, 0, (FIELD_DEPTH * FIELD_SCALE_XZ) / 2], [0, Math.PI, 0]);
+    leftWallMesh = createWall(new THREE.PlaneGeometry(FIELD_DEPTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y), [-(FIELD_WIDTH * FIELD_SCALE_XZ) / 2, 0, 0], [0, Math.PI / 2, 0]);
+    rightWallMesh = createWall(new THREE.PlaneGeometry(FIELD_DEPTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y), [(FIELD_WIDTH * FIELD_SCALE_XZ) / 2, 0, 0], [0, -Math.PI / 2, 0]);
     fieldContainer.add(frontWallMesh, backWallMesh, leftWallMesh, rightWallMesh);
 
     updateWallsOpacity();
 
     // Добавляем светло-голубое дно стакана
     const bottomMaterial = new THREE.MeshPhongMaterial({ color: 0x87ceeb, side: THREE.DoubleSide });
-    const bottomMesh = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_WIDTH, FIELD_DEPTH), bottomMaterial);
+    const bottomMesh = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_WIDTH * FIELD_SCALE_XZ, FIELD_DEPTH * FIELD_SCALE_XZ), bottomMaterial);
     bottomMesh.rotation.x = -Math.PI / 2;
-    bottomMesh.position.set(0, -FIELD_HEIGHT / 2, 0);
+    bottomMesh.position.set(0, -FIELD_HEIGHT * FIELD_SCALE_Y / 2, 0);
     bottomMesh.receiveShadow = true;
     fieldContainer.add(bottomMesh);
 
-    const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(FIELD_WIDTH, FIELD_HEIGHT, FIELD_DEPTH));
+    const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(FIELD_WIDTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y, FIELD_DEPTH * FIELD_SCALE_XZ));
     const wireframe = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x888888, linewidth: 2, transparent: true, opacity: 0.7 }));
     fieldContainer.add(wireframe);
 }
@@ -1070,14 +1222,14 @@ function updateDynamicCamera() {
     const staticCameraPos = new THREE.Vector3(0, 0, 15.35);
 
     // Вычисляем центры всех четырех верхних ребер стакана
-    const halfWidth = FIELD_WIDTH / 2 - 0.5;
-    const halfDepth = FIELD_DEPTH / 2 - 0.5;
+    const halfWidth = (FIELD_WIDTH / 2 - 0.5) * FIELD_SCALE_XZ;
+    const halfDepth = (FIELD_DEPTH / 2 - 0.5) * FIELD_SCALE_XZ;
 
     const edgeCenters = [
-        new THREE.Vector3(0, FIELD_TOP_Y, halfDepth),        // Переднее ребро (центр)
-        new THREE.Vector3(0, FIELD_TOP_Y, -halfDepth),       // Заднее ребро (центр)
-        new THREE.Vector3(halfWidth, FIELD_TOP_Y, 0),        // Правое ребро (центр)
-        new THREE.Vector3(-halfWidth, FIELD_TOP_Y, 0)        // Левое ребро (центр)
+        new THREE.Vector3(0, FIELD_TOP_Y * FIELD_SCALE_Y, halfDepth),        // Переднее ребро (центр)
+        new THREE.Vector3(0, FIELD_TOP_Y * FIELD_SCALE_Y, -halfDepth),       // Заднее ребро (центр)
+        new THREE.Vector3(halfWidth, FIELD_TOP_Y * FIELD_SCALE_Y, 0),        // Правое ребро (центр)
+        new THREE.Vector3(-halfWidth, FIELD_TOP_Y * FIELD_SCALE_Y, 0)        // Левое ребро (центр)
     ];
 
     // Находим ближайшее ребро к статической позиции камеры
@@ -1106,7 +1258,7 @@ function updateDynamicCamera() {
     dynamicCameraPosition.lerp(targetCameraPos, DYNAMIC_CAMERA_SMOOTH);
 
     // Центр дна стакана - точка наблюдения
-    const fieldCenterBottom = new THREE.Vector3(0, FIELD_BOTTOM_Y, 0);
+    const fieldCenterBottom = new THREE.Vector3(0, FIELD_BOTTOM_Y * FIELD_SCALE_Y, 0);
 
     // Камера всегда смотрит на центр дна стакана
     dynamicCameraTarget.lerp(fieldCenterBottom, DYNAMIC_CAMERA_SMOOTH);
