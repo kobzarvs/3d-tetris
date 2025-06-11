@@ -7,6 +7,7 @@ import {
     DROP_INTERVAL
 } from './constants';
 import type { GameStateType } from './constants';
+import { sounds } from './audio';
 
 // Types
 
@@ -767,6 +768,7 @@ export const gameActions = {
 
         if (!canPlacePiece(piece.blocks, piece.position, field)) {
             gameStateAtom.setGameOver();
+            sounds.gameOver();
             return;
         }
 
@@ -794,6 +796,8 @@ export const gameActions = {
             if (dx !== 0 || dz !== 0) {
                 timersAtom.resetLockDelay();
             }
+
+            sounds.move();
 
             return true;
         }
@@ -825,6 +829,7 @@ export const gameActions = {
 
         if (canPlacePiece(rotatedBlocks, piece.position, field)) {
             currentPieceAtom.rotate(rotatedBlocks);
+            sounds.rotate();
             return true;
         }
 
@@ -844,6 +849,7 @@ export const gameActions = {
         }));
 
         gameFieldAtom.placePiece(piece);
+        sounds.drop();
 
         // Add placement score
         scoreAtom.add(10);
@@ -1014,6 +1020,7 @@ export const gameActions = {
 
             scoreAtom.add(lineScore + iterativeBonus);
             console.log(`💰 Итеративная очистка: ${totalLinesCleared} плоскостей, ${finalBlocksToDestroy.length} блоков. Очки: ${lineScore + iterativeBonus}`);
+            sounds.clear();
         }
     },
 
@@ -1148,6 +1155,7 @@ export const gameActions = {
 
             scoreAtom.add(lineScore + cubeBonus);
             console.log(`💰 Очищено: ${totalLinesCleared} плоскостей, ${cubeArrays.length} кубов. Очки: ${lineScore + cubeBonus}`);
+            sounds.clear();
         }
     },
 

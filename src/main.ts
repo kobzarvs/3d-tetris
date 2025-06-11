@@ -23,6 +23,7 @@ import {
 import { lockDelayTimerWidget } from './widgets/lock-delay-indicator.ts';
 import './models/lock-delay'; // Инициализируем модель lock delay
 import { lockDelayAtom } from './models/lock-delay';
+import { soundEnabledAtom } from './audio';
 import {
     GameState,
     FIELD_WIDTH,
@@ -1879,6 +1880,11 @@ window.addEventListener('keydown', (event) => {
             case 'F8':
                 event.preventDefault();
                 restartGame();
+                break;
+            case 'F9':
+                event.preventDefault();
+                soundEnabledAtom.toggle();
+                console.log(`\uD83C\uDFB5 Звук: ${soundEnabledAtom() ? 'включен' : 'выключен'}`);
                 break;
         }
     }
