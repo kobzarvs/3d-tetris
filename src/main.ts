@@ -298,6 +298,18 @@ function resetGameState() {
     createWallGrids();
 }
 
+function restartGame() {
+    resetGameState();
+
+    if (!nextPieceAtom()) {
+        const newPiece = getRandomPiece();
+        nextPieceAtom.update(newPiece);
+    }
+
+    spawnNewPiece();
+    gameStateAtom.setPlaying();
+}
+
 // Базовые функции вращения вокруг осей
 
 
@@ -1278,7 +1290,7 @@ function updateNextPiecePreview() {
 // Запуск анимации вращения миникарты уже не нужен - анимация происходит синхронно в animateRotation()
 
 // UI Elements
-let startButton: HTMLButtonElement, restartButton: HTMLButtonElement, mainMenuButton: HTMLButtonElement, resumeButton: HTMLButtonElement, pauseMenuButton: HTMLButtonElement, startMenu: HTMLDivElement, pauseMenu: HTMLDivElement, scoreDisplay: HTMLDivElement, scoreValue: HTMLSpanElement, gameOverMenu: HTMLDivElement, perspectiveGrid: HTMLDivElement, cameraModeIndicator: HTMLDivElement, cameraIcon: HTMLDivElement, cameraModeText: HTMLDivElement, controlsHelp: HTMLDivElement, minimapContainer: HTMLDivElement, nextPieceUIContainer: HTMLDivElement, difficultyDisplay: HTMLDivElement, difficultyCube: HTMLDivElement, difficultyValue: HTMLDivElement;
+let startButton: HTMLButtonElement, restartButton: HTMLButtonElement, pauseRestartButton: HTMLButtonElement, mainMenuButton: HTMLButtonElement, resumeButton: HTMLButtonElement, pauseMenuButton: HTMLButtonElement, startMenu: HTMLDivElement, pauseMenu: HTMLDivElement, scoreDisplay: HTMLDivElement, scoreValue: HTMLSpanElement, gameOverMenu: HTMLDivElement, perspectiveGrid: HTMLDivElement, cameraModeIndicator: HTMLDivElement, cameraIcon: HTMLDivElement, cameraModeText: HTMLDivElement, controlsHelp: HTMLDivElement, minimapContainer: HTMLDivElement, nextPieceUIContainer: HTMLDivElement, difficultyDisplay: HTMLDivElement, difficultyCube: HTMLDivElement, difficultyValue: HTMLDivElement;
 
 // Lock Delay Timer теперь в models/lock-delay-indicator.ts
 
@@ -1291,6 +1303,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     startButton = document.getElementById('start-button') as HTMLButtonElement;
     restartButton = document.getElementById('restart-button') as HTMLButtonElement;
+    pauseRestartButton = document.getElementById('restart-pause-button') as HTMLButtonElement;
     mainMenuButton = document.getElementById('main-menu-button') as HTMLButtonElement;
     resumeButton = document.getElementById('resume-button') as HTMLButtonElement;
     pauseMenuButton = document.getElementById('pause-menu-button') as HTMLButtonElement;
@@ -1333,6 +1346,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     restartButton.addEventListener('click', () => {
         gameStateAtom.setPlaying();
+    });
+
+    pauseRestartButton.addEventListener('click', () => {
+        restartGame();
     });
 
     mainMenuButton.addEventListener('click', () => {
@@ -1652,6 +1669,10 @@ window.addEventListener('keydown', (event) => {
                 updateVisuals();
                 updateMinimap();
                 console.log('🧪 Спавн обычной фигуры I для заполнения дырки');
+                break;
+            case 'F8':
+                event.preventDefault();
+                restartGame();
                 break;
         }
     }
