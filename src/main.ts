@@ -1806,7 +1806,7 @@ window.addEventListener('keydown', (event) => {
             case 'KeyQ': {
                 const piece = currentPieceAtom();
                 if (!piece) break;
-                const r = rotateInViewPlane(piece.blocks);
+                const r = rotateSide(piece.blocks);
                 if (canPlacePieceCompat(r, piece.position)) {
                     currentPieceAtom.rotate(r);
                     updateMinimap();
@@ -1818,7 +1818,7 @@ window.addEventListener('keydown', (event) => {
             case 'KeyW': {
                 const piece = currentPieceAtom();
                 if (!piece) break;
-                const r = rotateVertical(piece.blocks);
+                const r = rotateInViewPlane(piece.blocks);
                 if (canPlacePieceCompat(r, piece.position)) {
                     currentPieceAtom.rotate(r);
                     updateMinimap();
@@ -1830,7 +1830,7 @@ window.addEventListener('keydown', (event) => {
             case 'KeyE': {
                 const piece = currentPieceAtom();
                 if (!piece) break;
-                const r = rotateSide(piece.blocks);
+                const r = rotateVertical(piece.blocks);
                 if (canPlacePieceCompat(r, piece.position)) {
                     currentPieceAtom.rotate(r);
                     updateMinimap();
