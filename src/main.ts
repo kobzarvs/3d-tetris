@@ -1456,6 +1456,25 @@ let startButton: HTMLButtonElement, restartButton: HTMLButtonElement, pauseResta
 // Мини-карта
 let minimapCanvas: HTMLCanvasElement;
 let _prevState: GameStateType = gameStateAtom();
+let menuButtons: HTMLButtonElement[] = [];
+let menuIndex = 0;
+
+function updateMenuSelection() {
+    menuButtons.forEach((btn, idx) => {
+        if (idx === menuIndex) {
+            btn.classList.add('selected');
+            btn.focus({ preventScroll: true });
+        } else {
+            btn.classList.remove('selected');
+        }
+    });
+}
+
+function setMenuButtons(buttons: HTMLButtonElement[]) {
+    menuButtons = buttons;
+    menuIndex = 0;
+    updateMenuSelection();
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🔧 DOM Content Loaded - Initializing UI elements...');
@@ -1523,6 +1542,8 @@ document.addEventListener('DOMContentLoaded', () => {
         gameStateAtom.setMenu();
     });
 
+    setMenuButtons([startButton]);
+
     // Инициализируем иконку камеры
     updateCameraModeIndicator();
 
@@ -1583,6 +1604,19 @@ effect(() => {
     if (difficultyDisplay) {
         const shouldShowDifficulty = isPlaying || isPaused || isGameOver;
         difficultyDisplay.classList.toggle('hidden', !shouldShowDifficulty);
+    }
+
+    if (state !== _prevState) {
+        if (isMenu) {
+            setMenuButtons([startButton]);
+        } else if (isPaused) {
+            setMenuButtons([resumeButton, pauseRestartButton, pauseMenuButton]);
+        } else if (isGameOver) {
+            setMenuButtons([restartButton, mainMenuButton]);
+        } else {
+            menuButtons.forEach(btn => btn.classList.remove('selected'));
+            menuButtons = [];
+        }
     }
 
     // Управление фоном сцены
@@ -1677,25 +1711,36 @@ effect(() => {
 // Controls
 window.addEventListener('keydown', (event) => {
     const state = gameStateAtom();
-    if (state === GameState.MENU && (event.code === 'Enter' || event.code === 'Space')) {
+
+    if (state === GameState.PAUSED && event.code === 'Escape') {
         event.preventDefault();
         gameStateAtom.setPlaying();
+        return;
     }
 
-    if (state === GameState.GAME_OVER) {
-        if (event.code === 'Enter' || event.code === 'Space') {
-            event.preventDefault();
-            gameStateAtom.setPlaying();
-        } else if (event.code === 'Escape') {
-            event.preventDefault();
-            gameStateAtom.setMenu();
-        }
+    if (state === GameState.GAME_OVER && event.code === 'Escape') {
+        event.preventDefault();
+        gameStateAtom.setMenu();
+        return;
     }
 
-    if (state === GameState.PAUSED) {
-        if (event.code === 'Escape' || event.code === 'Enter' || event.code === 'Space') {
-            event.preventDefault();
-            gameStateAtom.setPlaying();
+    if (state === GameState.MENU || state === GameState.PAUSED || state === GameState.GAME_OVER) {
+        if (menuButtons.length > 0) {
+            if (event.code === 'ArrowUp') {
+                event.preventDefault();
+                menuIndex = (menuIndex - 1 + menuButtons.length) % menuButtons.length;
+                updateMenuSelection();
+                return;
+            } else if (event.code === 'ArrowDown') {
+                event.preventDefault();
+                menuIndex = (menuIndex + 1) % menuButtons.length;
+                updateMenuSelection();
+                return;
+            } else if (event.code === 'Enter' || event.code === 'Space') {
+                event.preventDefault();
+                menuButtons[menuIndex].click();
+                return;
+            }
         }
     }
 
