@@ -1728,12 +1728,12 @@ window.addEventListener('keydown', (event) => {
 
     if (state === GameState.MENU || state === GameState.PAUSED || state === GameState.GAME_OVER) {
         if (menuButtons.length > 0) {
-            if (event.code === 'ArrowUp') {
+            if (event.code === 'ArrowUp' || event.code === 'ArrowLeft') {
                 event.preventDefault();
                 menuIndex = (menuIndex - 1 + menuButtons.length) % menuButtons.length;
                 updateMenuSelection();
                 return;
-            } else if (event.code === 'ArrowDown') {
+            } else if (event.code === 'ArrowDown' || event.code === 'ArrowRight') {
                 event.preventDefault();
                 menuIndex = (menuIndex + 1) % menuButtons.length;
                 updateMenuSelection();
