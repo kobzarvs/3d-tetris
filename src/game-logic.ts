@@ -141,7 +141,7 @@ export const difficultyLevelAtom = atom(3).actions((target) => ({
     setLevel: (level: 2 | 3 | 4 | 5) => target.set(level)
 }));
 
-export const lockDelayTimerVisibleAtom = atom(true).actions((target) => ({
+export const lockDelayTimerVisibleAtom = atom(false).actions((target) => ({
     toggle: () => target.set(prev => !prev),
     show: () => target.set(true),
     hide: () => target.set(false)
