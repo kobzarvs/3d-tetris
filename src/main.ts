@@ -1424,11 +1424,11 @@ function updateNextPiecePreview() {
 
     // Создаем превью фигуры в отдельной сцене
     const pieceGroup = new THREE.Group();
-    pieceGroup.scale.set(1 / FIELD_SCALE_XZ, 1 / FIELD_SCALE_Y, 1 / FIELD_SCALE_XZ);
     console.log(`🧱 Создаём ${blocks.length} блоков для фигуры ${nextPieceType}`);
 
     for (const block of blocks) {
         const cube = new THREE.Mesh(sharedBlockGeometry, material);
+        cube.scale.set(1 / FIELD_SCALE_XZ, 1 / FIELD_SCALE_Y, 1 / FIELD_SCALE_XZ);
         cube.position.set(block.x, block.y, block.z);
         cube.castShadow = true;
         cube.receiveShadow = true;
@@ -1436,6 +1436,7 @@ function updateNextPiecePreview() {
 
         // Добавляем контур
         const wireframe = new THREE.LineSegments(sharedEdgesGeometry, materialPools.edges);
+        wireframe.scale.copy(cube.scale);
         wireframe.position.copy(cube.position);
         pieceGroup.add(wireframe);
     }
