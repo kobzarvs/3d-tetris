@@ -5,6 +5,7 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>3D Tetris</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         /* Critical styles to prevent FOUC */
         body {
@@ -34,40 +35,40 @@
 <body>
 <div class="perspective-grid"></div>
 <canvas id="scene-canvas"></canvas>
-<div id="ui-overlay">
-    <div id="start-menu" class="menu">
+<div id="ui-overlay" x-data x-cloak>
+    <div id="start-menu" class="menu" x-show="$store.ui.state === 'MENU'">
         <h1 class="game-title">3D TETRIS</h1>
-        <button id="start-button" class="game-button">START</button>
+        <button id="start-button" class="game-button" x-on:click="startGame()">START</button>
     </div>
-    <div id="score-display" class="score-display hidden">Score: <span id="score-value">0</span></div>
-    <div id="difficulty-display" class="difficulty-display hidden">
-        <div class="difficulty-cube" id="difficulty-cube">3</div>
+    <div id="score-display" class="score-display" x-show="$store.ui.state !== 'MENU'" >Score: <span id="score-value" x-text="$store.ui.score">0</span></div>
+    <div id="difficulty-display" class="difficulty-display" x-show="$store.ui.state !== 'MENU'">
+        <div class="difficulty-cube" id="difficulty-cube" x-text="$store.ui.difficulty"></div>
         <div class="difficulty-text">
             <div class="difficulty-label">LEVEL</div>
-            <div class="difficulty-value" id="difficulty-value">3x3x3</div>
+            <div class="difficulty-value" id="difficulty-value" x-text="`${$store.ui.difficulty}x${$store.ui.difficulty}x${$store.ui.difficulty}`">3x3x3</div>
         </div>
     </div>
-    <div id="camera-mode-indicator" class="camera-mode-indicator hidden">
-        <div id="camera-icon" class="camera-icon front">📹</div>
-        <div id="camera-mode-text" class="camera-mode-text">FRONT</div>
+    <div id="camera-mode-indicator" class="camera-mode-indicator" x-show="['PLAYING','PAUSED'].includes($store.ui.state)">
+        <div id="camera-icon" :class="$store.ui.cameraIconClass">📹</div>
+        <div id="camera-mode-text" x-text="$store.ui.cameraMode" class="camera-mode-text">FRONT</div>
     </div>
-    <div id="pause-menu" class="menu hidden">
+    <div id="pause-menu" class="menu" x-show="$store.ui.state === 'PAUSED'">
         <h1 class="pause-title">PAUSE</h1>
         <div class="pause-buttons">
-            <button id="resume-button" class="game-button">RESUME</button>
-            <button id="restart-pause-button" class="game-button">RESTART</button>
-            <button id="pause-menu-button" class="game-button">MAIN MENU</button>
+            <button id="resume-button" class="game-button" x-on:click="resumeGame()">RESUME</button>
+            <button id="restart-pause-button" class="game-button" x-on:click="restartGame()">RESTART</button>
+            <button id="pause-menu-button" class="game-button" x-on:click="mainMenu()">MAIN MENU</button>
         </div>
     </div>
-    <div id="game-over" class="menu hidden">
+    <div id="game-over" class="menu" x-show="$store.ui.state === 'GAME_OVER'">
         <h1 class="game-over-title">GAME OVER</h1>
         <div class="game-over-buttons">
-            <button id="restart-button" class="game-button">RESTART</button>
-            <button id="main-menu-button" class="game-button">MAIN MENU</button>
+            <button id="restart-button" class="game-button" x-on:click="restartGame()">RESTART</button>
+            <button id="main-menu-button" class="game-button" x-on:click="mainMenu()">MAIN MENU</button>
         </div>
     </div>
 
-    <div id="controls-help" class="controls-help hidden">
+    <div id="controls-help" class="controls-help" x-show="['PLAYING','PAUSED'].includes($store.ui.state)" :class="{'collapsed': !$store.ui.controlsHelpVisible}">
         <div class="controls-section controls-movement">
             <div class="controls-title">MOVEMENT</div>
             <div class="control-item">
@@ -144,10 +145,10 @@
             </div>
         </div>
     </div>
-    <div id="minimap-container" class="minimap-container hidden">
+    <div id="minimap-container" class="minimap-container" x-show="['PLAYING','PAUSED'].includes($store.ui.state)">
         <canvas id="minimap-canvas" class="minimap-canvas"></canvas>
     </div>
-    <div id="next-piece-container" class="next-piece-container hidden">
+    <div id="next-piece-container" class="next-piece-container" x-show="['PLAYING','PAUSED'].includes($store.ui.state)">
         <div class="next-piece-title">NEXT</div>
         <canvas id="next-piece-canvas" class="next-piece-canvas"></canvas>
     </div>

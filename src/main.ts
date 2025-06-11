@@ -1,6 +1,6 @@
 import './style.css'
 import * as THREE from 'three';
-import { effect } from '@reatom/core';
+import { effect } from './alpine-state.ts';
 import {
     gameStateAtom,
     scoreAtom,
@@ -1276,14 +1276,10 @@ function updateDynamicCamera() {
 }
 
 function updateCameraModeIndicator() {
-    if (!cameraIcon || !cameraModeText) return;
-
-    if (cameraMode === 'front') {
-        cameraIcon.className = 'camera-icon front';
-        cameraModeText.textContent = 'FRONT';
-    } else {
-        cameraIcon.className = 'camera-icon top';
-        cameraModeText.textContent = 'TOP';
+    const store = (window as any).Alpine?.store('ui');
+    if (store) {
+        store.cameraIconClass = cameraMode === 'front' ? 'camera-icon front' : 'camera-icon top';
+        store.cameraMode = cameraMode === 'front' ? 'FRONT' : 'TOP';
     }
 }
 
@@ -1451,7 +1447,7 @@ function updateNextPiecePreview() {
 // Запуск анимации вращения миникарты уже не нужен - анимация происходит синхронно в animateRotation()
 
 // UI Elements
-let startButton: HTMLButtonElement, restartButton: HTMLButtonElement, pauseRestartButton: HTMLButtonElement, mainMenuButton: HTMLButtonElement, resumeButton: HTMLButtonElement, pauseMenuButton: HTMLButtonElement, startMenu: HTMLDivElement, pauseMenu: HTMLDivElement, scoreDisplay: HTMLDivElement, scoreValue: HTMLSpanElement, gameOverMenu: HTMLDivElement, perspectiveGrid: HTMLDivElement, cameraModeIndicator: HTMLDivElement, cameraIcon: HTMLDivElement, cameraModeText: HTMLDivElement, controlsHelp: HTMLDivElement, minimapContainer: HTMLDivElement, nextPieceUIContainer: HTMLDivElement, difficultyDisplay: HTMLDivElement, difficultyCube: HTMLDivElement, difficultyValue: HTMLDivElement;
+let startButton: HTMLButtonElement, restartButton: HTMLButtonElement, pauseRestartButton: HTMLButtonElement, mainMenuButton: HTMLButtonElement, resumeButton: HTMLButtonElement, pauseMenuButton: HTMLButtonElement, perspectiveGrid: HTMLDivElement;
 
 // Lock Delay Timer теперь в models/lock-delay-indicator.ts
 
@@ -1487,21 +1483,7 @@ document.addEventListener('DOMContentLoaded', () => {
     mainMenuButton = document.getElementById('main-menu-button') as HTMLButtonElement;
     resumeButton = document.getElementById('resume-button') as HTMLButtonElement;
     pauseMenuButton = document.getElementById('pause-menu-button') as HTMLButtonElement;
-    startMenu = document.getElementById('start-menu') as HTMLDivElement;
-    pauseMenu = document.getElementById('pause-menu') as HTMLDivElement;
-    scoreDisplay = document.getElementById('score-display') as HTMLDivElement;
-    scoreValue = document.getElementById('score-value') as HTMLSpanElement;
-    gameOverMenu = document.getElementById('game-over') as HTMLDivElement;
     perspectiveGrid = document.querySelector('.perspective-grid') as HTMLDivElement;
-    cameraModeIndicator = document.getElementById('camera-mode-indicator') as HTMLDivElement;
-    cameraIcon = document.getElementById('camera-icon') as HTMLDivElement;
-    cameraModeText = document.getElementById('camera-mode-text') as HTMLDivElement;
-    controlsHelp = document.getElementById('controls-help') as HTMLDivElement;
-    minimapContainer = document.getElementById('minimap-container') as HTMLDivElement;
-    nextPieceUIContainer = document.getElementById('next-piece-container') as HTMLDivElement;
-    difficultyDisplay = document.getElementById('difficulty-display') as HTMLDivElement;
-    difficultyCube = document.getElementById('difficulty-cube') as HTMLDivElement;
-    difficultyValue = document.getElementById('difficulty-value') as HTMLDivElement;
 
     // Lock Delay Timer будет создан динамически когда понадобится
 
@@ -1516,33 +1498,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     console.log('📋 UI Elements status:');
     console.log('  startButton:', startButton);
-    console.log('  scoreDisplay:', scoreDisplay);
-    console.log('  scoreValue:', scoreValue);
-    console.log('  scoreValue.textContent:', scoreValue?.textContent);
 
-    startButton.addEventListener('click', () => {
-        gameStateAtom.setPlaying();
-    });
+    if ((window as any).Alpine) {
+        (window as any).Alpine.store('ui', {
+            state: gameStateAtom(),
+            score: scoreAtom(),
+            difficulty: difficultyLevelAtom(),
+            cameraMode: cameraMode === 'front' ? 'FRONT' : 'TOP',
+            cameraIconClass: cameraMode === 'front' ? 'camera-icon front' : 'camera-icon top',
+            controlsHelpVisible: controlsHelpVisible
+        });
+    }
 
-    restartButton.addEventListener('click', () => {
-        gameStateAtom.setPlaying();
-    });
-
-    pauseRestartButton.addEventListener('click', () => {
-        restartGame();
-    });
-
-    mainMenuButton.addEventListener('click', () => {
-        gameStateAtom.setMenu();
-    });
-
-    resumeButton.addEventListener('click', () => {
-        gameStateAtom.setPlaying();
-    });
-
-    pauseMenuButton.addEventListener('click', () => {
-        gameStateAtom.setMenu();
-    });
+    // Экспортируем функции для Alpine
+    (window as any).startGame = () => gameStateAtom.setPlaying();
+    (window as any).restartGame = () => restartGame();
+    (window as any).mainMenu = () => gameStateAtom.setMenu();
+    (window as any).resumeGame = () => gameStateAtom.setPlaying();
 
     setMenuButtons([startButton]);
 
@@ -1577,36 +1549,11 @@ effect(() => {
     const isPaused = state === GameState.PAUSED;
     const isGameOver = state === GameState.GAME_OVER;
 
-    if (startMenu) startMenu.classList.toggle('hidden', !isMenu);
-    if (pauseMenu) pauseMenu.classList.toggle('hidden', !isPaused);
-    if (scoreDisplay) {
-        const shouldShow = isPlaying || isPaused || isGameOver;
-        scoreDisplay.classList.toggle('hidden', !shouldShow);
-        console.log(`🎮 Game State: ${state}, Score Display visible: ${shouldShow}`);
+    const store = (window as any).Alpine?.store('ui');
+    if (store) {
+        store.state = state;
     }
-    if (gameOverMenu) gameOverMenu.classList.toggle('hidden', !isGameOver);
     if (perspectiveGrid) perspectiveGrid.style.display = isMenu ? 'block' : 'none';
-    if (cameraModeIndicator) {
-        const shouldShowCameraIndicator = isPlaying || isPaused;
-        cameraModeIndicator.classList.toggle('hidden', !shouldShowCameraIndicator);
-    }
-    if (controlsHelp) {
-        const shouldShowControls = isPlaying || isPaused;
-        controlsHelp.classList.toggle('hidden', !shouldShowControls);
-        controlsHelp.classList.toggle('collapsed', !controlsHelpVisible);
-    }
-    if (minimapContainer) {
-        const shouldShowMinimap = isPlaying || isPaused;
-        minimapContainer.classList.toggle('hidden', !shouldShowMinimap);
-    }
-    if (nextPieceUIContainer) {
-        const shouldShowNextPiece = isPlaying || isPaused;
-        nextPieceUIContainer.classList.toggle('hidden', !shouldShowNextPiece);
-    }
-    if (difficultyDisplay) {
-        const shouldShowDifficulty = isPlaying || isPaused || isGameOver;
-        difficultyDisplay.classList.toggle('hidden', !shouldShowDifficulty);
-    }
 
     if (state !== _prevState) {
         if (isMenu) {
@@ -1656,29 +1603,15 @@ effect(() => {
 effect(() => {
     const currentScore = scoreAtom();
     console.log(`🎯 UI Score Update: ${currentScore}`);
-    console.log(`📱 scoreValue element:`, scoreValue);
-
-    if (scoreValue) {
-        scoreValue.textContent = currentScore.toString();
-        console.log(`✅ UI Updated: scoreValue.textContent = "${scoreValue.textContent}"`);
-    } else {
-        console.log(`❌ scoreValue element not found!`);
-    }
+    const store = (window as any).Alpine?.store('ui');
+    if (store) store.score = currentScore;
 });
 
 effect(() => {
     const difficulty = difficultyLevelAtom();
     console.log(`🎲 UI Difficulty Update: ${difficulty}`);
-
-    if (difficultyCube) {
-        difficultyCube.textContent = difficulty.toString();
-        console.log(`✅ UI Updated: difficultyCube.textContent = "${difficultyCube.textContent}"`);
-    }
-
-    if (difficultyValue) {
-        difficultyValue.textContent = `${difficulty}x${difficulty}x${difficulty}`;
-        console.log(`✅ UI Updated: difficultyValue.textContent = "${difficultyValue.textContent}"`);
-    }
+    const store = (window as any).Alpine?.store('ui');
+    if (store) store.difficulty = difficulty;
 });
 
 effect(() => {
@@ -1789,8 +1722,9 @@ window.addEventListener('keydown', (event) => {
             case 'F1':
                 event.preventDefault();
                 controlsHelpVisible = !controlsHelpVisible;
-                if (controlsHelp) {
-                    controlsHelp.classList.toggle('collapsed', !controlsHelpVisible);
+                const store = (window as any).Alpine?.store('ui');
+                if (store) {
+                    store.controlsHelpVisible = controlsHelpVisible;
                 }
                 console.log(`📋 Controls help: ${controlsHelpVisible ? 'показаны' : 'скрыты'}`);
                 break;

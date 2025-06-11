@@ -1,4 +1,4 @@
-import { atom, computed } from '@reatom/core';
+import { atom, computed } from './alpine-state.ts';
 import {
     GameState,
     FIELD_WIDTH,

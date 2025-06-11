@@ -16,7 +16,6 @@
     "vitest": "^3.2.3"
   },
   "dependencies": {
-    "@reatom/core": "^1000.0.0-alpha.30",
     "@types/three": "^0.177.0",
     "three": "^0.177.0"
   }

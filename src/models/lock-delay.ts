@@ -1,4 +1,4 @@
-import { atom, effect } from '@reatom/core';
+import { atom, effect } from '../alpine-state.ts';
 import { gameStateAtom, currentPieceAtom, gameActions } from '../game-logic';
 import { canPlacePieceCompat } from '../game-logic';
 import { GameState, LOCK_DELAY_TIME } from '../constants';
