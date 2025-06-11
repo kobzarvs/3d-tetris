@@ -572,6 +572,27 @@ body {
   height: 100%;
 }
 
+/* Подсказка вращения клавишами Q/W/E */
+.rotation-hints {
+  width: 100%;
+  height: 60px;
+  display: block;
+  pointer-events: none;
+}
+.rotation-hints path {
+  stroke: #00ffff;
+  stroke-width: 2;
+  fill: none;
+}
+.rotation-hints text {
+  fill: #00ffff;
+  font-family: 'Orbitron', monospace;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-anchor: middle;
+  text-shadow: 0 0 5px #00ffff;
+}
+
 /* Lock Delay Timer */
 .lock-delay-timer {
   position: fixed;
