@@ -103,8 +103,13 @@ pointLight2.position.set(-10, -10, 10);
 pointLight2.castShadow = false;
 scene.add(pointLight2);
 
+// Scale block size to keep visual dimensions consistent when the logical field
+// dimensions change
+const BLOCK_SIZE_XZ = BLOCK_SIZE * FIELD_SCALE_XZ;
+const BLOCK_SIZE_Y = BLOCK_SIZE * FIELD_SCALE_Y;
+
 // Shared geometries for memory optimization
-const sharedBlockGeometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+const sharedBlockGeometry = new THREE.BoxGeometry(BLOCK_SIZE_XZ, BLOCK_SIZE_Y, BLOCK_SIZE_XZ);
 const sharedEdgesGeometry = new THREE.EdgesGeometry(sharedBlockGeometry);
 
 // Простая миникарта с ортогональной камерой над реальным стаканом
@@ -141,7 +146,8 @@ const materialPools = {
 };
 
 // Shared geometries for projections
-const sharedPlaneGeometry = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
+const sharedPlaneGeometryHorizontal = new THREE.PlaneGeometry(BLOCK_SIZE_XZ, BLOCK_SIZE_XZ);
+const sharedPlaneGeometryVertical = new THREE.PlaneGeometry(BLOCK_SIZE_XZ, BLOCK_SIZE_Y);
 
 // Function to get or create block material
 function getBlockMaterial(color: number): THREE.MeshPhongMaterial {
@@ -166,7 +172,8 @@ function disposeObject3D(obj: THREE.Object3D) {
             if (meshOrLine.geometry &&
                 meshOrLine.geometry !== sharedBlockGeometry &&
                 meshOrLine.geometry !== sharedEdgesGeometry &&
-                meshOrLine.geometry !== sharedPlaneGeometry) {
+                meshOrLine.geometry !== sharedPlaneGeometryHorizontal &&
+                meshOrLine.geometry !== sharedPlaneGeometryVertical) {
                 meshOrLine.geometry.dispose();
             }
             // Only dispose non-pooled materials
@@ -784,7 +791,7 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
         // Если блок упал на дно
         if (blockFinalYRounded <= 0) {
             // Белая проекция на дне
-            const whitePlane = new THREE.Mesh(sharedPlaneGeometry, materialPools.projectionWhite);
+            const whitePlane = new THREE.Mesh(sharedPlaneGeometryHorizontal, materialPools.projectionWhite);
             whitePlane.rotation.x = -Math.PI / 2;
             whitePlane.position.set(
                 (worldX - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
@@ -796,7 +803,7 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
         // Если под блоком есть препятствие в финальной позиции
         else if (underBlockY >= 0 && gameFieldAtom()[underBlockY] && gameFieldAtom()[underBlockY][worldZ][worldX] !== null) {
             // Белая проекция на препятствии
-            const whitePlane = new THREE.Mesh(sharedPlaneGeometry, materialPools.projectionWhite);
+            const whitePlane = new THREE.Mesh(sharedPlaneGeometryHorizontal, materialPools.projectionWhite);
             whitePlane.rotation.x = -Math.PI / 2;
             whitePlane.position.set(
                 (worldX - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
@@ -816,7 +823,7 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
                     break;
                 }
             }
-            const redPlane = new THREE.Mesh(sharedPlaneGeometry, materialPools.projectionRed);
+            const redPlane = new THREE.Mesh(sharedPlaneGeometryHorizontal, materialPools.projectionRed);
             redPlane.rotation.x = -Math.PI / 2;
             redPlane.position.set(
                 (worldX - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
@@ -925,7 +932,7 @@ function updateWallProjections(renderPosition?: { x: number; y: number; z: numbe
         for (const block of piece.blocks) {
             const coords = coordsFunc(block);
             // ИСПРАВЛЕНО: используем shared геометрию
-            const plane = new THREE.Mesh(sharedPlaneGeometry, projectionMaterial.clone());
+            const plane = new THREE.Mesh(sharedPlaneGeometryVertical, projectionMaterial.clone());
             plane.position.set(coords.x, coords.y, coords.z);
             plane.rotation.set(rotation.x, rotation.y, rotation.z);
             group.add(plane);
