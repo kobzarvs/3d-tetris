@@ -369,11 +369,12 @@ export function rotateAroundZ(blocks: Block3D[]): Block3D[] {
 }
 
 export function rotateInViewPlane(blocks: Block3D[]): Block3D[] {
+    // Вращение в плоскости экрана относительно камеры (W)
     return rotateAroundY(blocks);
 }
 
 export function rotateVertical(blocks: Block3D[]): Block3D[] {
-    // Вращение в вертикальной плоскости относительно камеры (Q)
+    // Вращение в вертикальной плоскости относительно камеры (E)
     const rotationSteps = Math.round(fieldRotationAtom() / 90) % 4;
     switch (rotationSteps) {
         case 0: return rotateAroundZ(blocks);  // 0° - передняя стена видна, вращаем в плоскости XY
@@ -385,7 +386,7 @@ export function rotateVertical(blocks: Block3D[]): Block3D[] {
 }
 
 export function rotateSide(blocks: Block3D[]): Block3D[] {
-    // Вращение в боковой плоскости относительно камеры (E)
+    // Вращение в боковой плоскости относительно камеры (Q)
     const rotationSteps = Math.round(fieldRotationAtom() / 90) % 4;
     switch (rotationSteps) {
         case 0: return rotateAroundX(blocks);  // 0° - боковое вращение в плоскости YZ
