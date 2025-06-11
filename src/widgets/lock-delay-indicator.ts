@@ -1,4 +1,4 @@
-import { effect } from '@reatom/core';
+import { effect } from '../alpine-state.ts';
 import { lockDelayAtom } from '../models/lock-delay.ts';
 import { lockDelayTimerVisibleAtom } from '../game-logic.ts';
 import { LOCK_DELAY_TIME } from '../constants.ts';
