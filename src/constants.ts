@@ -10,9 +10,9 @@ export type GameStateType = typeof GameState[keyof typeof GameState];
 
 // Game field dimensions
 // Logical field dimensions (number of cells)
-export const FIELD_WIDTH = 7;
-export const FIELD_DEPTH = 7;
-export const FIELD_HEIGHT = 14;
+export const FIELD_WIDTH = 8;
+export const FIELD_DEPTH = 8;
+export const FIELD_HEIGHT = 16;
 
 // Visual field dimensions (world units)
 export const ORIGINAL_FIELD_WIDTH = 10;

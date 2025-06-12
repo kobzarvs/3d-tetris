@@ -237,6 +237,12 @@ let dynamicCameraPosition = new THREE.Vector3(1, 0, 36);
 // Controls help visibility
 let controlsHelpVisible = false;
 
+// Key hints visibility
+let keyHintsVisible = true;
+let qHintMesh: THREE.Mesh | null = null;
+let wHintMesh: THREE.Mesh | null = null;
+let eHintMesh: THREE.Mesh | null = null;
+
 // Visuals
 let pieceVisuals: THREE.Group | null = null;
 let frontWallMesh: THREE.Mesh | null, backWallMesh: THREE.Mesh | null, leftWallMesh: THREE.Mesh | null, rightWallMesh: THREE.Mesh | null;
@@ -253,13 +259,14 @@ const gameContainer = new THREE.Group();
 const landedBlocksContainer = new THREE.Group();
 const menuContainer = new THREE.Group();
 const nextPieceContainer = new THREE.Group();
+const staticUIContainer = new THREE.Group(); // Статичный контейнер для UI элементов
 
 rotationContainer.rotation.y = 0; // Без базового поворота - чистая 3D перспектива
 rotationContainer.add(fieldContainer, gameContainer);
 gameContainer.add(landedBlocksContainer);
 nextPieceContainer.position.set(NEXT_PIECE_POSITION.x, NEXT_PIECE_POSITION.y, NEXT_PIECE_POSITION.z);
 nextPieceContainer.scale.setScalar(NEXT_PIECE_SCALE);
-scene.add(rotationContainer, menuContainer, nextPieceContainer);
+scene.add(rotationContainer, menuContainer, nextPieceContainer, staticUIContainer);
 
 // Menu animation
 interface AnimatedPiece extends THREE.Group {
@@ -982,6 +989,22 @@ function toggleWallProjections() {
     }
 }
 
+function toggleKeyHints() {
+    keyHintsVisible = !keyHintsVisible;
+
+    if (qHintMesh) {
+        qHintMesh.visible = keyHintsVisible;
+    }
+    if (wHintMesh) {
+        wHintMesh.visible = keyHintsVisible;
+    }
+    if (eHintMesh) {
+        eHintMesh.visible = keyHintsVisible;
+    }
+
+    console.log(`🔤 Подсказки клавиш: ${keyHintsVisible ? 'показаны' : 'скрыты'}`);
+}
+
 function updateWallsOpacity() {
     if (!frontWallMesh || !backWallMesh || !leftWallMesh || !rightWallMesh) return;
 
@@ -1015,6 +1038,181 @@ function updateWallsOpacity() {
     }
 }
 
+function drawCircleArrow(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, lineW = 8, color1: string, color2: string) {
+    // Параметры дуги (подобраны под картинку)
+    let start = 4 * Math.PI / 3;
+    const sweep = Math.PI;
+    const end   = start + sweep;
+
+    ctx.lineWidth = lineW;
+    ctx.lineCap   = 'round';
+    ctx.strokeStyle = color1;
+
+    // Основная дуга
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, start, end, false);
+    ctx.stroke();
+
+    // Наконечник
+    const headLen = lineW * 1.75;
+    start -= 0.3;
+    const x  = cx + r * Math.cos(start);
+    const y  = cy + r * Math.sin(start);
+    const ax = cx + (r + headLen) * Math.cos(start + Math.PI / 6);
+    const ay = cy + (r + headLen) * Math.sin(start + Math.PI / 6);
+    const ax2 = cx + (r - headLen) * Math.cos(start + Math.PI / 6);
+    const ay2 = cy + (r - headLen) * Math.sin(start + Math.PI / 6);
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(ax, ay);
+    ctx.lineTo(ax2, ay2);
+    ctx.closePath();
+    ctx.fillStyle = color2;
+    ctx.fill();
+}
+
+const OFFSET_X = -5;
+const OFFSET_Y = -2;
+const OFFSET_Z = 8;
+const HINT_COLOR = '#ccc';
+
+function createQHint() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 160;
+    const context = canvas.getContext('2d')!;
+
+    context.fillStyle = '#111c2a';
+    context.fillRect(0, 0, 160, 160);
+    context.fill();
+    context.fillStyle = '#33f';
+    context.fillRect(0, 157, 160, 3);
+    context.fill();
+
+    context.fillStyle = HINT_COLOR;
+    context.font = 'bold 80px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('Q', 80, 80);
+
+    drawCircleArrow(context, 80, 80, 64, 6, HINT_COLOR, HINT_COLOR);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const letterMaterial = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide
+    });
+
+    const cellSize = FIELD_SCALE_XZ / FIELD_DEPTH;
+    const letterGeometry = new THREE.PlaneGeometry(cellSize * 20, cellSize * 20);
+    const letterMesh = new THREE.Mesh(letterGeometry, letterMaterial);
+
+    letterMesh.rotateY(Math.PI / 2);
+    letterMesh.position.set(
+        -4.0 * FIELD_SCALE_XZ - 0.05 + OFFSET_X,
+        (FIELD_HEIGHT - 7) * FIELD_SCALE_Y / 3 + OFFSET_Y + 0.45,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 1.6 + OFFSET_Z
+    );
+
+    // Сохраняем ссылку на mesh для управления видимостью
+    qHintMesh = letterMesh;
+
+    staticUIContainer.add(letterMesh);
+}
+
+function createEHint() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 160;
+    const context = canvas.getContext('2d')!;
+
+    context.fillStyle = '#16223280';
+    context.fillRect(0, 0, 160, 160);
+    context.fill();
+    context.fillStyle = '#3f3';
+    context.fillRect(0, 0, 3, 160);
+    context.fill();
+
+    context.fillStyle = HINT_COLOR;
+    context.font = 'bold 80px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('E', 80, 80);
+
+    drawCircleArrow(context, 80, 80, 64, 6, HINT_COLOR, HINT_COLOR);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const letterMaterial = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide
+    });
+
+    const cellSize = FIELD_SCALE_XZ / FIELD_DEPTH;
+    const letterGeometry = new THREE.PlaneGeometry(cellSize * 20, cellSize * 20);
+    const letterMesh = new THREE.Mesh(letterGeometry, letterMaterial);
+
+    letterMesh.position.set(
+        -3 * FIELD_SCALE_XZ + 0.25 + OFFSET_X,
+        (FIELD_HEIGHT - 7) * FIELD_SCALE_Y / 3 + OFFSET_Y + 0.45,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + OFFSET_Z
+    );
+
+    // Сохраняем ссылку на mesh для управления видимостью
+    eHintMesh = letterMesh;
+
+    staticUIContainer.add(letterMesh);
+}
+
+function createWHint() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 160;
+    const context = canvas.getContext('2d')!;
+
+    context.fillStyle = '#16223250';
+    context.fillRect(0, 0, 160, 160);
+    context.fill();
+    context.fillStyle = '#f33';
+    context.fillRect(0, 0, 160, 3);
+    context.fill();
+
+    context.fillStyle = HINT_COLOR;
+    context.font = 'bold 80px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('W', 70, 90);
+
+    drawCircleArrow(context, 70, 80, 64, 6, HINT_COLOR, HINT_COLOR);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const letterMaterial = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide
+    });
+
+    const cellSize = FIELD_SCALE_XZ / FIELD_DEPTH;
+    const letterGeometry = new THREE.PlaneGeometry(cellSize * 20, cellSize * 20);
+    const letterMesh = new THREE.Mesh(letterGeometry, letterMaterial);
+    letterMesh.rotateX(-Math.PI / 2);
+    letterMesh.position.set(
+        -3.0 * FIELD_SCALE_XZ + 0.3 + OFFSET_X,
+        (FIELD_HEIGHT - 10) * FIELD_SCALE_Y / 3 + OFFSET_Y,
+        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 1.6 + OFFSET_Z
+    );
+
+    // Сохраняем ссылку на mesh для управления видимостью
+    wHintMesh = letterMesh;
+
+    staticUIContainer.add(letterMesh);
+}
+
 function createFieldBoundaries() {
     clearFieldBoundaries();
     const wallMaterial = new THREE.MeshPhongMaterial({ color: 0x444444, transparent: true, opacity: 0.2, side: THREE.DoubleSide });
@@ -1032,6 +1230,11 @@ function createFieldBoundaries() {
     leftWallMesh = createWall(new THREE.PlaneGeometry(FIELD_DEPTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y), [-(FIELD_WIDTH * FIELD_SCALE_XZ) / 2, 0, 0], [0, Math.PI / 2, 0]);
     rightWallMesh = createWall(new THREE.PlaneGeometry(FIELD_DEPTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y), [(FIELD_WIDTH * FIELD_SCALE_XZ) / 2, 0, 0], [0, -Math.PI / 2, 0]);
     fieldContainer.add(frontWallMesh, backWallMesh, leftWallMesh, rightWallMesh);
+
+    // Добавляем подсказку для клавиши Q на левую стену
+    createQHint();
+    createWHint();
+    createEHint();
 
     updateWallsOpacity();
 
@@ -1806,6 +2009,10 @@ window.addEventListener('keydown', (event) => {
             case 'F3':
                 event.preventDefault();
                 lockDelayTimerVisibleAtom.toggle();
+                break;
+            case 'F4':
+                event.preventDefault();
+                toggleKeyHints();
                 break;
             case 'KeyQ': {
                 const piece = currentPieceAtom();
