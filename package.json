@@ -1,23 +1,25 @@
 {
-  "name": "tetris-3d",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "check": "tsc --noEmit",
-    "test": "vitest run"
-  },
-  "devDependencies": {
-    "typescript": "~5.8.3",
-    "vite": "^6.3.5",
-    "vitest": "^3.2.3"
-  },
-  "dependencies": {
-    "@reatom/core": "^1000.0.0-alpha.30",
-    "@types/three": "^0.177.0",
-    "three": "^0.177.0"
-  }
+    "name": "tetris-3d",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build",
+        "preview": "vite preview",
+        "check": "npm run fix && tsc --noEmit",
+        "test": "vitest run",
+        "fix": "biome format --write && biome check --write"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^1.9.4",
+        "typescript": "~5.8.3",
+        "vite": "^6.3.5",
+        "vitest": "^3.2.3"
+    },
+    "dependencies": {
+        "@reatom/core": "^1000.0.0-alpha.30",
+        "@types/three": "^0.177.0",
+        "three": "^0.177.0"
+    }
 }

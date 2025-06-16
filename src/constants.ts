@@ -3,10 +3,10 @@ export const GameState = {
     MENU: 'MENU',
     PLAYING: 'PLAYING',
     PAUSED: 'PAUSED',
-    GAME_OVER: 'GAME_OVER'
+    GAME_OVER: 'GAME_OVER',
 } as const;
 
-export type GameStateType = typeof GameState[keyof typeof GameState];
+export type GameStateType = (typeof GameState)[keyof typeof GameState];
 
 // Game field dimensions
 // Logical field dimensions (number of cells)

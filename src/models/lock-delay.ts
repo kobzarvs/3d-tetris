@@ -1,7 +1,7 @@
 import { atom, effect } from '@reatom/core';
-import { gameStateAtom, currentPieceAtom, gameActions } from '../game-logic';
-import { canPlacePieceCompat } from '../game-logic';
 import { GameState, LOCK_DELAY_TIME } from '../constants';
+import { currentPieceAtom, gameActions, gameStateAtom } from '../game-logic';
+import { canPlacePieceCompat } from '../game-logic';
 
 // Lock Delay Model - содержит только бизнес-логику
 export const lockDelayAtom = atom<{
@@ -15,40 +15,44 @@ export const lockDelayAtom = atom<{
     startTime: 0,
     paused: false,
     pausedAt: 0,
-    totalPausedTime: 0
-}).actions((target) => ({
-    start: () => target.set({
-        active: true,
-        startTime: performance.now(),
-        paused: false,
-        pausedAt: 0,
-        totalPausedTime: 0
-    }),
-    cancel: () => target.set({
-        active: false,
-        startTime: 0,
-        paused: false,
-        pausedAt: 0,
-        totalPausedTime: 0
-    }),
-    pause: () => target.set(state => {
-        if (!state.active || state.paused) return state;
-        return {
-            ...state,
-            paused: true,
-            pausedAt: performance.now()
-        };
-    }),
-    resume: () => target.set(state => {
-        if (!state.active || !state.paused) return state;
-        const pauseDuration = performance.now() - state.pausedAt;
-        return {
-            ...state,
+    totalPausedTime: 0,
+}).actions(target => ({
+    start: () =>
+        target.set({
+            active: true,
+            startTime: performance.now(),
             paused: false,
             pausedAt: 0,
-            totalPausedTime: state.totalPausedTime + pauseDuration
-        };
-    }),
+            totalPausedTime: 0,
+        }),
+    cancel: () =>
+        target.set({
+            active: false,
+            startTime: 0,
+            paused: false,
+            pausedAt: 0,
+            totalPausedTime: 0,
+        }),
+    pause: () =>
+        target.set(state => {
+            if (!state.active || state.paused) return state;
+            return {
+                ...state,
+                paused: true,
+                pausedAt: performance.now(),
+            };
+        }),
+    resume: () =>
+        target.set(state => {
+            if (!state.active || !state.paused) return state;
+            const pauseDuration = performance.now() - state.pausedAt;
+            return {
+                ...state,
+                paused: false,
+                pausedAt: 0,
+                totalPausedTime: state.totalPausedTime + pauseDuration,
+            };
+        }),
     forceLock: () => {
         // Принудительная фиксация фигуры при нажатии пробела
         const state = target();
@@ -58,12 +62,12 @@ export const lockDelayAtom = atom<{
                 startTime: 0,
                 paused: false,
                 pausedAt: 0,
-                totalPausedTime: 0
+                totalPausedTime: 0,
             });
             return true; // Возвращаем true если таймер был активен
         }
         return false; // Возвращаем false если таймер не был активен
-    }
+    },
 }));
 
 // ПРАВИЛЬНАЯ ЛОГИКА: Только LOCK_DELAY_TIME управляет всем!
@@ -158,4 +162,3 @@ effect(() => {
         previousY = null;
     }
 });
-

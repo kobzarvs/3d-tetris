@@ -434,6 +434,18 @@ body {
   gap: 8px;
 }
 
+.controls-movement {
+  grid-row: span 2;
+}
+
+.controls-pause {
+  grid-row: span 3;
+}
+
+.controls-rotation {
+  grid-row: span 2;
+}
+
 .controls-title {
   color: #00ffff;
   font-size: 1.4em;

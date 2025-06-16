@@ -1,7 +1,7 @@
 import { effect } from '@reatom/core';
-import { lockDelayAtom } from '../models/lock-delay.ts';
-import { lockDelayTimerVisibleAtom } from '../game-logic.ts';
 import { LOCK_DELAY_TIME } from '../constants.ts';
+import { lockDelayTimerVisibleAtom } from '../game-logic.ts';
+import { lockDelayAtom } from '../models/lock-delay.ts';
 
 /**
  * Lock Delay Timer Widget

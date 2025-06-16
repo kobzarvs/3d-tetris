@@ -1,289 +1,98 @@
-import './style.css'
-import * as THREE from 'three';
+import './style.css';
 import { effect } from '@reatom/core';
 import {
-    gameStateAtom,
-    scoreAtom,
-    fieldRotationAtom,
+    canPlacePieceCompat,
     coloredModeAtom,
+    currentPieceAtom,
     difficultyLevelAtom,
+    fieldRotationAtom,
+    gameActions,
+    gameFieldAtom,
+    gameStateAtom,
+    getRandomPiece,
     lockDelayTimerVisibleAtom,
     nextPieceAtom,
-    tetrominoShapes,
-    tetrominoColors,
-    gameActions,
-    getRandomPiece,
     rotateInViewPlane,
-    rotateVertical,
     rotateSide,
-    canPlacePieceCompat,
-    gameFieldAtom,
-    currentPieceAtom
+    rotateVertical,
+    scoreAtom,
 } from './game-logic';
 import { lockDelayTimerWidget } from './widgets/lock-delay-indicator.ts';
 import './models/lock-delay'; // Инициализируем модель lock delay
+import { FIELD_DEPTH, FIELD_HEIGHT, FIELD_ROTATION_DURATION, FIELD_WIDTH, GameState } from './constants';
+import type { GameStateType } from './constants';
 import { lockDelayAtom } from './models/lock-delay';
 import {
-    GameState,
-    FIELD_WIDTH,
-    FIELD_DEPTH,
-    FIELD_HEIGHT,
-    BLOCK_SIZE,
-    FIELD_ROTATION_DURATION,
-    PIECE_ANIMATION_DURATION,
-    LANDED_BLOCKS_OPACITY,
-    DYNAMIC_CAMERA_DISTANCE,
-    DYNAMIC_CAMERA_MIN_DISTANCE,
-    DYNAMIC_CAMERA_SMOOTH,
-    FIELD_TOP_Y,
-    FIELD_BOTTOM_Y,
-    FIELD_SCALE_XZ,
-    FIELD_SCALE_Y,
-    FROZEN_FIGURE_COLOR,
-    MINIMAP_SIZE,
-    CAMERA_START_Z,
-    CAMERA_START_Y,
-    NEXT_PIECE_SCALE,
-    NEXT_PIECE_POSITION
-} from './constants';
-import type { GameStateType } from './constants';
-
-// Scene setup
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({
-    canvas: document.getElementById('scene-canvas') as HTMLCanvasElement,
-    antialias: true,
-    alpha: true
-});
-
-renderer.setSize(window.innerWidth, window.innerHeight);
-
-// Создаем туманный градиентный фон в темно-синих тонах
-const canvas = document.createElement('canvas');
-canvas.width = 256;
-canvas.height = 256;
-const context = canvas.getContext('2d')!;
-const gradient = context.createLinearGradient(0, 0, 0, 256);
-gradient.addColorStop(0, '#0f1419');
-gradient.addColorStop(0.3, '#0a0f1a');
-gradient.addColorStop(0.7, '#050a15');
-gradient.addColorStop(1, '#020408');
-context.fillStyle = gradient;
-context.fillRect(0, 0, 256, 256);
-
-const backgroundTexture = new THREE.CanvasTexture(canvas);
-// Фон будет устанавливаться динамически в зависимости от состояния игры
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.sortObjects = true;
-
-// Lighting
-const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
-scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-directionalLight.position.set(5, 15, 5);
-directionalLight.castShadow = true;
-directionalLight.shadow.mapSize.width = 2048;
-directionalLight.shadow.mapSize.height = 2048;
-directionalLight.shadow.camera.left = -12;
-directionalLight.shadow.camera.right = 12;
-directionalLight.shadow.camera.top = 12;
-directionalLight.shadow.camera.bottom = -12;
-directionalLight.shadow.camera.near = 0.1;
-directionalLight.shadow.camera.far = 50;
-directionalLight.shadow.bias = -0.0005;
-scene.add(directionalLight);
-const pointLight1 = new THREE.PointLight(0x00ffff, 1.5, 100);
-pointLight1.position.set(10, 10, 10);
-pointLight1.castShadow = false;
-scene.add(pointLight1);
-const pointLight2 = new THREE.PointLight(0xff00ff, 1.5, 100);
-pointLight2.position.set(-10, -10, 10);
-pointLight2.castShadow = false;
-scene.add(pointLight2);
-
-// Scale block size to keep visual dimensions consistent when the logical field
-// dimensions change
-const BLOCK_SIZE_XZ = BLOCK_SIZE * FIELD_SCALE_XZ;
-const BLOCK_SIZE_Y = BLOCK_SIZE * FIELD_SCALE_Y;
-
-// Shared geometries for memory optimization
-const sharedBlockGeometry = new THREE.BoxGeometry(BLOCK_SIZE_XZ, BLOCK_SIZE_Y, BLOCK_SIZE_XZ);
-const sharedEdgesGeometry = new THREE.EdgesGeometry(sharedBlockGeometry);
-// Separate geometry for menu pieces to avoid field scaling distortion
-const menuBlockGeometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-const menuEdgesGeometry = new THREE.EdgesGeometry(menuBlockGeometry);
-
-// Простая миникарта с ортогональной камерой над реальным стаканом
-let minimapRenderer: THREE.WebGLRenderer;
-let minimapCamera: THREE.OrthographicCamera;
-
-// Next piece preview renderer
-let nextPieceRenderer: THREE.WebGLRenderer;
-let nextPieceCamera: THREE.PerspectiveCamera;
-let nextPieceScene: THREE.Scene;
-
-// Material pools for memory optimization
-const materialPools = {
-    blocks: new Map<number, THREE.MeshPhongMaterial>(),
-    edges: new THREE.LineBasicMaterial({ color: 0x000000 }),
-    projection: new THREE.MeshBasicMaterial({
-        color: 0x888888,
-        transparent: true,
-        opacity: 0.3,
-        side: THREE.DoubleSide
-    }),
-    projectionWhite: new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide
-    }),
-    projectionRed: new THREE.MeshBasicMaterial({
-        color: 0xff0000,
-        transparent: true,
-        opacity: 0.6,
-        side: THREE.DoubleSide
-    })
-};
-
-// Shared geometries for projections
-const sharedPlaneGeometryHorizontal = new THREE.PlaneGeometry(BLOCK_SIZE_XZ, BLOCK_SIZE_XZ);
-const sharedPlaneGeometryVertical = new THREE.PlaneGeometry(BLOCK_SIZE_XZ, BLOCK_SIZE_Y);
-
-// Function to get or create block material
-function getBlockMaterial(color: number): THREE.MeshPhongMaterial {
-    if (!materialPools.blocks.has(color)) {
-        materialPools.blocks.set(color, new THREE.MeshPhongMaterial({
-            color,
-            emissive: color,
-            emissiveIntensity: 0.2,
-            transparent: true,
-            opacity: LANDED_BLOCKS_OPACITY
-        }));
-    }
-    return materialPools.blocks.get(color)!;
-}
-
-// Function to properly dispose Three.js objects
-function disposeObject3D(obj: THREE.Object3D) {
-    obj.traverse((child) => {
-        if ((child as any).isMesh || (child as any).isLineSegments) {
-            const meshOrLine = child as any;
-            // Only dispose non-shared geometries
-            if (meshOrLine.geometry &&
-                meshOrLine.geometry !== sharedBlockGeometry &&
-                meshOrLine.geometry !== sharedEdgesGeometry &&
-                meshOrLine.geometry !== menuBlockGeometry &&
-                meshOrLine.geometry !== menuEdgesGeometry &&
-                meshOrLine.geometry !== sharedPlaneGeometryHorizontal &&
-                meshOrLine.geometry !== sharedPlaneGeometryVertical) {
-                meshOrLine.geometry.dispose();
-            }
-            // Only dispose non-pooled materials
-            if (meshOrLine.material &&
-                meshOrLine.material !== materialPools.edges &&
-                meshOrLine.material !== materialPools.projection &&
-                meshOrLine.material !== materialPools.projectionWhite &&
-                meshOrLine.material !== materialPools.projectionRed &&
-                !materialPools.blocks.has((meshOrLine.material as any).color?.getHex?.())) {
-                if (Array.isArray(meshOrLine.material)) {
-                    meshOrLine.material.forEach((mat: any) => {
-                        if (mat !== materialPools.edges &&
-                            mat !== materialPools.projection &&
-                            mat !== materialPools.projectionWhite &&
-                            mat !== materialPools.projectionRed) mat.dispose();
-                    });
-                } else {
-                    meshOrLine.material.dispose();
-                }
-            }
-        }
-    });
-}
-
-// Simple 3D coordinate structure
-interface Block3D {
-    x: number;
-    y: number;
-    z: number;
-}
-
-
-// Используем tetrominoShapes и tetrominoColors из game-logic.ts
-
-// Функция getRandomPiece импортирована из game-logic.ts
-
-// Game data (migrated to currentPieceAtom)
-
-// Анимация движения фигур
-let isAnimating = false;
-let animationStartTime = 0;
-let animationStartPosition = { x: 0, y: 0, z: 0 };
-let animationTargetPosition = { x: 0, y: 0, z: 0 };
-
-// Lock delay механика (теперь через Reatom)
-
-// (Drop timer не нужен - всё управляется через lock delay)
-
-
-// Камера
-type CameraMode = 'front' | 'top';
-let cameraMode: CameraMode = 'front';
-let dynamicCameraTarget = new THREE.Vector3(0, 0, 0);
-let dynamicCameraPosition = new THREE.Vector3(1, 0, 36);
-
-// Controls help visibility
-let controlsHelpVisible = false;
-
-// Key hints visibility
-let keyHintsVisible = true;
-let qHintMesh: THREE.Mesh | null = null;
-let wHintMesh: THREE.Mesh | null = null;
-let eHintMesh: THREE.Mesh | null = null;
-
-// Visuals
-let pieceVisuals: THREE.Group | null = null;
-let frontWallMesh: THREE.Mesh | null, backWallMesh: THREE.Mesh | null, leftWallMesh: THREE.Mesh | null, rightWallMesh: THREE.Mesh | null;
-let bottomGridGroup: THREE.Group | null, leftWallGridGroup: THREE.Group | null, rightWallGridGroup: THREE.Group | null, backWallGridGroup: THREE.Group | null, frontWallGridGroup: THREE.Group | null;
-let bottomProjectionGroup: THREE.Group | null, leftProjectionGroup: THREE.Group | null, rightProjectionGroup: THREE.Group | null, backProjectionGroup: THREE.Group | null;
-let obstacleHighlightsGroup: THREE.Group | null = null;
-let axesHelper: THREE.AxesHelper | null = null;
-let projectionsVisible = true;
-
-// Scene graph containers
-const rotationContainer = new THREE.Group();
-const fieldContainer = new THREE.Group();
-const gameContainer = new THREE.Group();
-const landedBlocksContainer = new THREE.Group();
-const menuContainer = new THREE.Group();
-const nextPieceContainer = new THREE.Group();
-const staticUIContainer = new THREE.Group(); // Статичный контейнер для UI элементов
-
-rotationContainer.rotation.y = 0; // Без базового поворота - чистая 3D перспектива
-rotationContainer.add(fieldContainer, gameContainer);
-gameContainer.add(landedBlocksContainer);
-nextPieceContainer.position.set(NEXT_PIECE_POSITION.x, NEXT_PIECE_POSITION.y, NEXT_PIECE_POSITION.z);
-nextPieceContainer.scale.setScalar(NEXT_PIECE_SCALE);
-scene.add(rotationContainer, menuContainer, nextPieceContainer, staticUIContainer);
-
-// Menu animation
-interface AnimatedPiece extends THREE.Group {
-    fallSpeed: number;
-    rotationSpeed: { x: number; y: number; z: number; };
-}
-const fallingPieces: AnimatedPiece[] = [];
+    backgroundTexture,
+    camera,
+    fieldContainer,
+    gameContainer,
+    landedBlocksContainer,
+    menuContainer,
+    nextPieceContainer,
+    pointLight1,
+    pointLight2,
+    renderer,
+    rotationContainer,
+    scene,
+    staticUIContainer,
+} from './scene/core';
+import { disposeObject3D } from './scene/materials';
+import {
+    animateMenuLights,
+    initializeFallingPieces,
+    startFallingPiecesInterval,
+    updateCameraForMenu,
+    updateFallingPiecesAnimation,
+} from './scene/menu';
+import {
+    animationState,
+    clearPieceVisuals,
+    pieceVisuals,
+    spawnNewPiece,
+    startPieceAnimation,
+    updatePieceAnimation,
+    updateVisuals,
+} from './scene/pieces';
+import {
+    createEHint,
+    createQHint,
+    createWHint,
+    getControlsHelpVisible,
+    initMinimap,
+    initNextPiecePreview,
+    renderNextPiecePreview,
+    toggleCameraMode,
+    toggleControlsHelp,
+    toggleKeyHints,
+    updateCameraModeIndicator,
+    updateDynamicCamera,
+    updateMinimap,
+    updateNextPiecePreview,
+} from './scene/ui';
+import {
+    createFieldBoundaries,
+    createWallGrids,
+    toggleAxesHelper,
+    toggleWallProjections,
+    updateLandedVisuals,
+    updateWallsOpacity,
+} from './scene/visuals';
 
 // Functions
 function initializeGameField() {
-    const emptyField = Array(FIELD_HEIGHT).fill(null).map(() => Array(FIELD_DEPTH).fill(null).map(() => Array(FIELD_WIDTH).fill(null)));
+    const emptyField = Array(FIELD_HEIGHT)
+        .fill(null)
+        .map(() =>
+            Array(FIELD_DEPTH)
+                .fill(null)
+                .map(() => Array(FIELD_WIDTH).fill(null)),
+        );
     gameFieldAtom.set(emptyField);
 }
 
-
 function resetGameState() {
-    console.log("🔄 Resetting game state...");
+    console.log('🔄 Resetting game state...');
     initializeGameField();
     const oldScore = scoreAtom();
     scoreAtom.reset();
@@ -291,32 +100,18 @@ function resetGameState() {
     console.log(`💰 Score reset: ${oldScore} → ${newScore}`);
     fieldRotationAtom.reset();
 
-    // Синхронизируем миникарту с сбросом поля
-    if (minimapCamera) {
-        minimapCamera.rotation.z = 0; // Без базового поворота - чистая ортогональная проекция
-    }
-
     while (landedBlocksContainer.children.length > 0) {
         const child = landedBlocksContainer.children[0];
         disposeObject3D(child);
         landedBlocksContainer.remove(child);
     }
-    if (pieceVisuals) {
-        disposeObject3D(pieceVisuals);
-        gameContainer.remove(pieceVisuals);
-    }
-    if (obstacleHighlightsGroup) {
-        disposeObject3D(obstacleHighlightsGroup);
-        gameContainer.remove(obstacleHighlightsGroup);
-    }
-    pieceVisuals = null;
-    obstacleHighlightsGroup = null;
+    clearPieceVisuals(gameContainer);
     currentPieceAtom.clear();
 
     rotationContainer.rotation.y = 0;
 
-    createFieldBoundaries();
-    createWallGrids();
+    createFieldBoundaries(fieldContainer, staticUIContainer, createQHint, createWHint, createEHint);
+    createWallGrids(fieldContainer);
 }
 
 function restartGame() {
@@ -331,929 +126,9 @@ function restartGame() {
     gameStateAtom.setPlaying();
 }
 
-// Базовые функции вращения вокруг осей
-
-
-
-// Lock delay logic теперь полностью в game-logic.ts через эффекты
-
-// Lock delay таймер теперь в отдельном модуле models/lock-delay-indicator.ts
-
-// Старая функция удалена - теперь визуальное обновление идет через эффект выше
-
-// (Drop timer функции удалены - всё управляется lock delay)
-
-// isOnGround теперь через isOnGroundAtom - эта функция больше не нужна
-
-
-
-
-
-function spawnNewPiece() {
-    // Сбрасываем состояние таймеров и счетчики
-    // Lock delay теперь управляется через эффект
-
-    // Получаем тип следующей фигуры из nextPieceAtom
-    let pieceType = nextPieceAtom();
-
-    // Если nextPiece еще не установлен (первый запуск), генерируем случайную фигуру
-    if (!pieceType) {
-        pieceType = getRandomPiece();
-    }
-
-    // Создаем временную фигуру для проверки коллизий ПЕРЕД spawn
-    const testBlocks = [...tetrominoShapes[pieceType]];
-    const testPosition = {
-        x: Math.floor(FIELD_WIDTH / 2),
-        y: FIELD_HEIGHT - 2,
-        z: Math.floor(FIELD_DEPTH / 2)
-    };
-
-    // Проверяем, можем ли разместить фигуру
-    if (!canPlacePieceCompat(testBlocks, testPosition)) {
-        gameStateAtom.setGameOver();
-        return;
-    }
-
-    // Устанавливаем новую следующую фигуру
-    nextPieceAtom.update(getRandomPiece());
-
-    // Только теперь создаем фигуру, когда знаем что место свободно
-    currentPieceAtom.spawn(pieceType);
-
-    console.log(`🔮 Spawned piece: ${pieceType}, Next piece: ${nextPieceAtom()}`);
-
-    // Lock delay запустится автоматически через эффект если фигура на земле
-    updateVisuals();
-}
-
-
-function updateVisuals() {
-    if (pieceVisuals) {
-        disposeObject3D(pieceVisuals);
-        gameContainer.remove(pieceVisuals);
-    }
-
-    const piece = currentPieceAtom();
-    if (piece) {
-        // ИСПРАВЛЕНО: используем текущую позицию без дублирования логики анимации
-        const renderPosition = piece.position;
-
-        pieceVisuals = new THREE.Group();
-        const color = tetrominoColors[piece.type];
-        // Создаем новый материал для активной фигуры (не используем shared pool)
-        const material = new THREE.MeshPhongMaterial({
-            color,
-            emissive: color,
-            emissiveIntensity: 0.2,
-            transparent: false
-        });
-
-        for (const block of piece.blocks) {
-            const cube = new THREE.Mesh(sharedBlockGeometry, material);
-            const x = renderPosition.x + block.x;
-            const y = renderPosition.y + block.y;
-            const z = renderPosition.z + block.z;
-            cube.position.set(
-                (x - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                (y - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                (z - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-            );
-            cube.castShadow = true;
-            cube.receiveShadow = true;
-            pieceVisuals.add(cube);
-
-            // Добавляем контур граней черным цветом с shared геометрией
-            const wireframe = new THREE.LineSegments(sharedEdgesGeometry, materialPools.edges);
-            wireframe.position.copy(cube.position);
-            pieceVisuals.add(wireframe);
-        }
-        gameContainer.add(pieceVisuals);
-        if (projectionsVisible) updateWallProjections(renderPosition);
-        updateMinimap();
-    }
-}
-
-function createWallGrids() {
-    // ИСПРАВЛЕНО: правильная очистка геометрий перед удалением
-    if (bottomGridGroup) {
-        disposeObject3D(bottomGridGroup);
-        fieldContainer.remove(bottomGridGroup);
-    }
-    if (frontWallGridGroup) {
-        disposeObject3D(frontWallGridGroup);
-        fieldContainer.remove(frontWallGridGroup);
-    }
-    if (backWallGridGroup) {
-        disposeObject3D(backWallGridGroup);
-        fieldContainer.remove(backWallGridGroup);
-    }
-    if (leftWallGridGroup) {
-        disposeObject3D(leftWallGridGroup);
-        fieldContainer.remove(leftWallGridGroup);
-    }
-    if (rightWallGridGroup) {
-        disposeObject3D(rightWallGridGroup);
-        fieldContainer.remove(rightWallGridGroup);
-    }
-
-    const gridMaterial = new THREE.LineBasicMaterial({ color: 0x666666, transparent: true, opacity: 0.3 });
-    const currentRotation = fieldRotationAtom();
-    const rotationSteps = Math.round(currentRotation / 90) % 4;
-
-    bottomGridGroup = new THREE.Group();
-    const bottomGeometry = new THREE.BufferGeometry();
-    const bottomVertices: number[] = [];
-    const bottomY = (-FIELD_HEIGHT / 2 + 0.005) * FIELD_SCALE_Y; // Чуть выше дна
-    for (let x = 0; x <= FIELD_WIDTH; x++) bottomVertices.push(
-        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ, bottomY, -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
-        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ, bottomY, (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
-    );
-    for (let z = 0; z <= FIELD_DEPTH; z++) bottomVertices.push(
-        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2, bottomY, (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ,
-        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2, bottomY, (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ
-    );
-    bottomGeometry.setAttribute('position', new THREE.Float32BufferAttribute(bottomVertices, 3));
-    // Черный цвет только для сетки на дне
-    const bottomGridMaterial = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.8 });
-    const bottomGrid = new THREE.LineSegments(bottomGeometry, bottomGridMaterial);
-    bottomGridGroup.add(bottomGrid);
-    fieldContainer.add(bottomGridGroup);
-
-    switch (rotationSteps) {
-        case 0: // 0°
-            createFrontWallGrid(gridMaterial);
-            createLeftWallGrid(gridMaterial);
-            createRightWallGrid(gridMaterial);
-            break;
-        case 1: // 90°
-            createRightWallGrid(gridMaterial);
-            createBackWallGrid(gridMaterial);
-            createFrontWallGrid(gridMaterial);
-            break;
-        case 2: // 180°
-            createBackWallGrid(gridMaterial);
-            createRightWallGrid(gridMaterial);
-            createLeftWallGrid(gridMaterial);
-            break;
-        case 3: // 270°
-            createLeftWallGrid(gridMaterial);
-            createFrontWallGrid(gridMaterial);
-            createBackWallGrid(gridMaterial);
-            break;
-    }
-}
-
-function createLeftWallGrid(material: THREE.LineBasicMaterial) {
-    leftWallGridGroup = new THREE.Group();
-    const vertices: number[] = [];
-    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(
-        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
-        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
-        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
-    );
-    for (let z = 0; z <= FIELD_DEPTH; z++) vertices.push(
-        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        -FIELD_HEIGHT * FIELD_SCALE_Y / 2,
-        (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ,
-        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        FIELD_HEIGHT * FIELD_SCALE_Y / 2,
-        (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ
-    );
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    const grid = new THREE.LineSegments(geometry, material);
-    leftWallGridGroup.add(grid);
-
-    // Добавляем желтую линию спавна (минимальная высота для нижних блоков фигур)
-    const spawnY = ((FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2) * FIELD_SCALE_Y;
-    const spawnGeometry = new THREE.BufferGeometry();
-    const spawnVertices = [
-        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        spawnY,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
-        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        spawnY,
-        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
-    ];
-    spawnGeometry.setAttribute('position', new THREE.Float32BufferAttribute(spawnVertices, 3));
-    const spawnMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
-    const spawnLine = new THREE.LineSegments(spawnGeometry, spawnMaterial);
-    leftWallGridGroup.add(spawnLine);
-
-    fieldContainer.add(leftWallGridGroup);
-}
-
-function createRightWallGrid(material: THREE.LineBasicMaterial) {
-    rightWallGridGroup = new THREE.Group();
-    const vertices: number[] = [];
-    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(
-        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
-        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
-        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
-    );
-    for (let z = 0; z <= FIELD_DEPTH; z++) vertices.push(
-        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        -FIELD_HEIGHT * FIELD_SCALE_Y / 2,
-        (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ,
-        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        FIELD_HEIGHT * FIELD_SCALE_Y / 2,
-        (z - FIELD_DEPTH / 2) * FIELD_SCALE_XZ
-    );
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    const grid = new THREE.LineSegments(geometry, material);
-    rightWallGridGroup.add(grid);
-
-    // Добавляем желтую линию спавна
-    const spawnY = ((FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2) * FIELD_SCALE_Y;
-    const spawnGeometry = new THREE.BufferGeometry();
-    const spawnVertices = [
-        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        spawnY,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
-        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        spawnY,
-        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
-    ];
-    spawnGeometry.setAttribute('position', new THREE.Float32BufferAttribute(spawnVertices, 3));
-    const spawnMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
-    const spawnLine = new THREE.LineSegments(spawnGeometry, spawnMaterial);
-    rightWallGridGroup.add(spawnLine);
-
-    fieldContainer.add(rightWallGridGroup);
-}
-
-function createBackWallGrid(material: THREE.LineBasicMaterial) {
-    backWallGridGroup = new THREE.Group();
-    const vertices: number[] = [];
-    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(
-        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
-        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
-        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
-        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
-    );
-    for (let x = 0; x <= FIELD_WIDTH; x++) vertices.push(
-        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ,
-        -FIELD_HEIGHT * FIELD_SCALE_Y / 2,
-        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
-        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ,
-        FIELD_HEIGHT * FIELD_SCALE_Y / 2,
-        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
-    );
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    const grid = new THREE.LineSegments(geometry, material);
-    backWallGridGroup.add(grid);
-
-    // Добавляем желтую линию спавна
-    const spawnY = ((FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2) * FIELD_SCALE_Y;
-    const spawnGeometry = new THREE.BufferGeometry();
-    const spawnVertices = [
-        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        spawnY,
-        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
-        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        spawnY,
-        (FIELD_DEPTH * FIELD_SCALE_XZ) / 2
-    ];
-    spawnGeometry.setAttribute('position', new THREE.Float32BufferAttribute(spawnVertices, 3));
-    const spawnMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
-    const spawnLine = new THREE.LineSegments(spawnGeometry, spawnMaterial);
-    backWallGridGroup.add(spawnLine);
-
-    fieldContainer.add(backWallGridGroup);
-}
-
-function createFrontWallGrid(material: THREE.LineBasicMaterial) {
-    frontWallGridGroup = new THREE.Group();
-    const vertices: number[] = [];
-    for (let y = 0; y <= FIELD_HEIGHT; y++) vertices.push(
-        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
-        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        (y - FIELD_HEIGHT / 2) * FIELD_SCALE_Y,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2
-    );
-    for (let x = 0; x <= FIELD_WIDTH; x++) vertices.push(
-        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ,
-        -FIELD_HEIGHT * FIELD_SCALE_Y / 2,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
-        (x - FIELD_WIDTH / 2) * FIELD_SCALE_XZ,
-        FIELD_HEIGHT * FIELD_SCALE_Y / 2,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2
-    );
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    const grid = new THREE.LineSegments(geometry, material);
-    frontWallGridGroup.add(grid);
-
-    // Добавляем желтую линию спавна
-    const spawnY = ((FIELD_HEIGHT - 3) - FIELD_HEIGHT / 2) * FIELD_SCALE_Y;
-    const spawnGeometry = new THREE.BufferGeometry();
-    const spawnVertices = [
-        -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        spawnY,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2,
-        (FIELD_WIDTH * FIELD_SCALE_XZ) / 2,
-        spawnY,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2
-    ];
-    spawnGeometry.setAttribute('position', new THREE.Float32BufferAttribute(spawnVertices, 3));
-    const spawnMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
-    const spawnLine = new THREE.LineSegments(spawnGeometry, spawnMaterial);
-    frontWallGridGroup.add(spawnLine);
-
-    fieldContainer.add(frontWallGridGroup);
-}
-
-function updateLandedVisuals() {
-    // Properly dispose of old objects before removing
-    while (landedBlocksContainer.children.length > 0) {
-        const child = landedBlocksContainer.children[0];
-        disposeObject3D(child);
-        landedBlocksContainer.remove(child);
-    }
-
-    // Use shared geometries instead of creating new ones
-    for (let y = 0; y < FIELD_HEIGHT; y++) {
-        for (let z = 0; z < FIELD_DEPTH; z++) {
-            for (let x = 0; x < FIELD_WIDTH; x++) {
-                const pieceType = gameFieldAtom()[y][z][x];
-                if (pieceType) {
-                    const originalColor = tetrominoColors[pieceType as keyof typeof tetrominoColors];
-                    const color = coloredModeAtom() ? originalColor : FROZEN_FIGURE_COLOR; // Серый цвет если цветной режим выключен
-                    const material = getBlockMaterial(color);
-                    const cube = new THREE.Mesh(sharedBlockGeometry, material);
-                    cube.position.set(
-                        (x - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                        (y - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                        (z - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-                    );
-                    cube.castShadow = true;
-                    cube.receiveShadow = true;
-                    landedBlocksContainer.add(cube);
-
-                    // Добавляем контур граней черным цветом с shared геометрией
-                    const wireframe = new THREE.LineSegments(sharedEdgesGeometry, materialPools.edges);
-                    wireframe.position.copy(cube.position);
-                    landedBlocksContainer.add(wireframe);
-                }
-            }
-        }
-    }
-}
-
-function updateWallProjections(renderPosition?: { x: number; y: number; z: number }) {
-    const piece = currentPieceAtom();
-    if (!piece) return;
-
-    // Используем переданную позицию или текущую позицию фигуры
-    const projectionPosition = renderPosition || piece.position;
-
-    if (bottomProjectionGroup) gameContainer.remove(bottomProjectionGroup);
-    if (leftProjectionGroup) gameContainer.remove(leftProjectionGroup);
-    if (rightProjectionGroup) gameContainer.remove(rightProjectionGroup);
-    if (backProjectionGroup) gameContainer.remove(backProjectionGroup);
-    if (obstacleHighlightsGroup) gameContainer.remove(obstacleHighlightsGroup);
-
-    const projectionMaterial = new THREE.MeshBasicMaterial({
-        color: tetrominoColors[piece.type],
-        transparent: true,
-        opacity: 0.3,
-        side: THREE.DoubleSide
-    });
-
-    const rotationSteps = Math.round(fieldRotationAtom() / 90) % 4;
-
-    // Создаем проекции на дно с проверкой препятствий
-    bottomProjectionGroup = new THREE.Group();
-    obstacleHighlightsGroup = new THREE.Group();
-
-    // Сначала симулируем падение всей фигуры до препятствия
-    let finalFigureY = projectionPosition.y;
-
-    // Опускаем фигуру до тех пор, пока не найдем препятствие
-    for (let testY = Math.floor(projectionPosition.y) - 1; testY >= 0; testY--) {
-        let canPlaceAtThisLevel = true;
-
-        // Проверяем все блоки фигуры на этом уровне
-        for (const testBlock of piece.blocks) {
-            const testWorldX = Math.round(projectionPosition.x + testBlock.x);
-            const testWorldZ = Math.round(projectionPosition.z + testBlock.z);
-            const testBlockY = testY + testBlock.y;
-
-            // Проверяем границы и коллизии
-            if (testBlockY < 0 || // Ниже дна
-                testWorldX < 0 || testWorldX >= FIELD_WIDTH ||
-                testWorldZ < 0 || testWorldZ >= FIELD_DEPTH ||
-                (gameFieldAtom()[testBlockY] && gameFieldAtom()[testBlockY][testWorldZ][testWorldX] !== null)) {
-                canPlaceAtThisLevel = false;
-                break;
-            }
-        }
-
-        if (canPlaceAtThisLevel) {
-            finalFigureY = testY;
-        } else {
-            break; // Нашли препятствие, останавливаемся
-        }
-    }
-
-    // Теперь в финальной позиции находим самые нижние блоки в каждой колонке
-    const columnBottomBlocks = new Map<string, { block: { x: number; y: number; z: number }, lowestY: number }>();
-
-    // Группируем блоки по колонкам (x, z) и находим самый нижний в каждой
-    for (const block of piece.blocks) {
-        const worldX = Math.round(projectionPosition.x + block.x);
-        const worldZ = Math.round(projectionPosition.z + block.z);
-        const key = `${worldX},${worldZ}`;
-
-        if (!columnBottomBlocks.has(key) || block.y < columnBottomBlocks.get(key)!.lowestY) {
-            columnBottomBlocks.set(key, { block, lowestY: block.y });
-        }
-    }
-
-    // Для каждого самого нижнего блока в колонке проверяем что под ним в финальной позиции
-    for (const [, { block }] of columnBottomBlocks) {
-        const worldX = Math.round(projectionPosition.x + block.x);
-        const worldZ = Math.round(projectionPosition.z + block.z);
-
-        // Проверяем валидность координат
-        if (worldX < 0 || worldX >= FIELD_WIDTH || worldZ < 0 || worldZ >= FIELD_DEPTH) {
-            continue;
-        }
-
-        // Финальная позиция этого блока после падения всей фигуры
-        const blockFinalY = finalFigureY + block.y;
-        const blockFinalYRounded = Math.round(blockFinalY);
-
-        // Проверяем что под блоком в его финальной позиции
-        const underBlockY = blockFinalYRounded - 1;
-
-        // Если блок упал на дно
-        if (blockFinalYRounded <= 0) {
-            // Белая проекция на дне
-            const whitePlane = new THREE.Mesh(sharedPlaneGeometryHorizontal, materialPools.projectionWhite);
-            whitePlane.rotation.x = -Math.PI / 2;
-            whitePlane.position.set(
-                (worldX - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                -FIELD_HEIGHT * FIELD_SCALE_Y / 2 + 0.01,
-                (worldZ - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-            );
-            bottomProjectionGroup.add(whitePlane);
-        }
-        // Если под блоком есть препятствие в финальной позиции
-        else if (underBlockY >= 0 && gameFieldAtom()[underBlockY] && gameFieldAtom()[underBlockY][worldZ][worldX] !== null) {
-            // Белая проекция на препятствии
-            const whitePlane = new THREE.Mesh(sharedPlaneGeometryHorizontal, materialPools.projectionWhite);
-            whitePlane.rotation.x = -Math.PI / 2;
-            whitePlane.position.set(
-                (worldX - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                (underBlockY - FIELD_HEIGHT / 2 + 0.5 + BLOCK_SIZE / 2 + 0.001) * FIELD_SCALE_Y,
-                (worldZ - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-            );
-            bottomProjectionGroup.add(whitePlane);
-        }
-        // Если под блоком пустота - ищем первое препятствие/дно ниже
-        else {
-            // Красная проекция - ищем первое препятствие ниже финальной позиции блока
-            let redProjectionY = -FIELD_HEIGHT * FIELD_SCALE_Y / 2 + 0.01; // По умолчанию на дне
-
-            for (let y = underBlockY - 1; y >= 0; y--) {
-                if (gameFieldAtom()[y] && gameFieldAtom()[y][worldZ][worldX] !== null) {
-                    redProjectionY = (y - FIELD_HEIGHT / 2 + 0.5 + BLOCK_SIZE / 2 + 0.001) * FIELD_SCALE_Y;
-                    break;
-                }
-            }
-            const redPlane = new THREE.Mesh(sharedPlaneGeometryHorizontal, materialPools.projectionRed);
-            redPlane.rotation.x = -Math.PI / 2;
-            redPlane.position.set(
-                (worldX - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                redProjectionY,
-                (worldZ - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-            );
-            bottomProjectionGroup.add(redPlane);
-        }
-    }
-
-    gameContainer.add(bottomProjectionGroup);
-    gameContainer.add(obstacleHighlightsGroup);
-
-    let backWallCoords: (block: Block3D) => { x: number, y: number, z: number } = () => ({ x: 0, y: 0, z: 0 });
-    let leftWallCoords: (block: Block3D) => { x: number, y: number, z: number } = () => ({ x: 0, y: 0, z: 0 });
-    let rightWallCoords: (block: Block3D) => { x: number, y: number, z: number } = () => ({ x: 0, y: 0, z: 0 });
-    let backWallRotation: { x: number, y: number, z: number } = { x: 0, y: 0, z: 0 };
-    let leftWallRotation: { x: number, y: number, z: number } = { x: 0, y: 0, z: 0 };
-    let rightWallRotation: { x: number, y: number, z: number } = { x: 0, y: 0, z: 0 };
-
-    switch (rotationSteps) {
-        case 0:
-            backWallCoords = (block) => ({
-                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 - 0.01
-            });
-            leftWallCoords = (block) => ({
-                x: -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2 - 0.01,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-            });
-            rightWallCoords = (block) => ({
-                x: (FIELD_WIDTH * FIELD_SCALE_XZ) / 2 + 0.01,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-            });
-            backWallRotation = { x: 0, y: Math.PI, z: 0 };
-            leftWallRotation = { x: 0, y: Math.PI / 2, z: 0 };
-            rightWallRotation = { x: 0, y: -Math.PI / 2, z: 0 };
-            break;
-        case 1:
-            backWallCoords = (block) => ({
-                x: (FIELD_WIDTH * FIELD_SCALE_XZ) / 2 + 0.01,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-            });
-            leftWallCoords = (block) => ({
-                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: (FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 0.01
-            });
-            rightWallCoords = (block) => ({
-                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 - 0.01
-            });
-            backWallRotation = { x: 0, y: -Math.PI / 2, z: 0 };
-            leftWallRotation = { x: 0, y: 0, z: 0 };
-            rightWallRotation = { x: 0, y: Math.PI, z: 0 };
-            break;
-        case 2:
-            backWallCoords = (block) => ({
-                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: (FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 0.01
-            });
-            leftWallCoords = (block) => ({
-                x: (FIELD_WIDTH * FIELD_SCALE_XZ) / 2 + 0.01,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-            });
-            rightWallCoords = (block) => ({
-                x: -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2 - 0.01,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-            });
-            backWallRotation = { x: 0, y: 0, z: 0 };
-            leftWallRotation = { x: 0, y: -Math.PI / 2, z: 0 };
-            rightWallRotation = { x: 0, y: Math.PI / 2, z: 0 };
-            break;
-        case 3:
-            backWallCoords = (block) => ({
-                x: -(FIELD_WIDTH * FIELD_SCALE_XZ) / 2 - 0.01,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: (Math.round(projectionPosition.z + block.z) - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-            });
-            leftWallCoords = (block) => ({
-                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 - 0.01
-            });
-            rightWallCoords = (block) => ({
-                x: (Math.round(projectionPosition.x + block.x) - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                y: (Math.round(projectionPosition.y + block.y) - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                z: (FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 0.01
-            });
-            backWallRotation = { x: 0, y: Math.PI / 2, z: 0 };
-            leftWallRotation = { x: 0, y: Math.PI, z: 0 };
-            rightWallRotation = { x: 0, y: 0, z: 0 };
-            break;
-    }
-
-    const createProjectionGroup = (coordsFunc: (b: Block3D) => {x:number, y:number, z:number}, rotation: {x:number, y:number, z:number}) => {
-        const group = new THREE.Group();
-        for (const block of piece.blocks) {
-            const coords = coordsFunc(block);
-            // ИСПРАВЛЕНО: используем shared геометрию
-            const plane = new THREE.Mesh(sharedPlaneGeometryVertical, projectionMaterial.clone());
-            plane.position.set(coords.x, coords.y, coords.z);
-            plane.rotation.set(rotation.x, rotation.y, rotation.z);
-            group.add(plane);
-        }
-        return group;
-    };
-
-    backProjectionGroup = createProjectionGroup(backWallCoords, backWallRotation);
-    leftProjectionGroup = createProjectionGroup(leftWallCoords, leftWallRotation);
-    rightProjectionGroup = createProjectionGroup(rightWallCoords, rightWallRotation);
-
-    gameContainer.add(backProjectionGroup, leftProjectionGroup, rightProjectionGroup);
-}
-
-function clearFieldBoundaries() {
-    while (fieldContainer.children.length > 0) {
-        fieldContainer.remove(fieldContainer.children[0]);
-    }
-}
-
-function toggleAxesHelper() {
-    if (axesHelper) {
-        fieldContainer.remove(axesHelper);
-        axesHelper = null;
-    } else {
-        axesHelper = new THREE.AxesHelper(3);
-        axesHelper.position.set(0, (-FIELD_HEIGHT / 2 + 2) * FIELD_SCALE_Y, 0); // Подняли на 2 единицы выше дна
-        fieldContainer.add(axesHelper);
-    }
-}
-
-function toggleWallProjections() {
-    projectionsVisible = !projectionsVisible;
-    if (projectionsVisible) {
-        if (currentPieceAtom()) updateWallProjections();
-    } else {
-        if (bottomProjectionGroup) gameContainer.remove(bottomProjectionGroup);
-        if (obstacleHighlightsGroup) gameContainer.remove(obstacleHighlightsGroup);
-        if (leftProjectionGroup) gameContainer.remove(leftProjectionGroup);
-        if (rightProjectionGroup) gameContainer.remove(rightProjectionGroup);
-        if (backProjectionGroup) gameContainer.remove(backProjectionGroup);
-    }
-}
-
-function toggleKeyHints() {
-    keyHintsVisible = !keyHintsVisible;
-
-    if (qHintMesh) {
-        qHintMesh.visible = keyHintsVisible;
-    }
-    if (wHintMesh) {
-        wHintMesh.visible = keyHintsVisible;
-    }
-    if (eHintMesh) {
-        eHintMesh.visible = keyHintsVisible;
-    }
-
-    console.log(`🔤 Подсказки клавиш: ${keyHintsVisible ? 'показаны' : 'скрыты'}`);
-}
-
-function updateWallsOpacity() {
-    if (!frontWallMesh || !backWallMesh || !leftWallMesh || !rightWallMesh) return;
-
-    const rotationSteps = Math.round(fieldRotationAtom() / 90) % 4;
-
-    // Сброс всех стен к базовой прозрачности и оригинальному цвету
-    (frontWallMesh.material as THREE.MeshPhongMaterial).opacity = 0.2;
-    (frontWallMesh.material as THREE.MeshPhongMaterial).color.setHex(0x444444);
-    (backWallMesh.material as THREE.MeshPhongMaterial).opacity = 0.2;
-    (backWallMesh.material as THREE.MeshPhongMaterial).color.setHex(0x444444);
-    (leftWallMesh.material as THREE.MeshPhongMaterial).opacity = 0.2;
-    (leftWallMesh.material as THREE.MeshPhongMaterial).color.setHex(0x444444);
-    (rightWallMesh.material as THREE.MeshPhongMaterial).opacity = 0.2;
-    (rightWallMesh.material as THREE.MeshPhongMaterial).color.setHex(0x444444);
-
-    // Делаем ближайшую к камере стену полностью прозрачной
-    // Камера в позиции (0, 14, 14), поэтому ближайшие стены:
-    switch (rotationSteps) {
-        case 0: // 0° - задняя стена ближайшая к камере (z = +5)
-            (backWallMesh.material as THREE.MeshPhongMaterial).opacity = 0;
-            break;
-        case 1: // 90° - левая стена ближайшая к камере (после поворота)
-            (leftWallMesh.material as THREE.MeshPhongMaterial).opacity = 0;
-            break;
-        case 2: // 180° - фронтальная стена ближайшая к камере (после поворота)
-            (frontWallMesh.material as THREE.MeshPhongMaterial).opacity = 0;
-            break;
-        case 3: // 270° - правая стена ближайшая к камере (после поворота)
-            (rightWallMesh.material as THREE.MeshPhongMaterial).opacity = 0;
-            break;
-    }
-}
-
-function drawCircleArrow(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, lineW = 8, color1: string, color2: string) {
-    // Параметры дуги (подобраны под картинку)
-    let start = 4 * Math.PI / 3;
-    const sweep = Math.PI;
-    const end   = start + sweep;
-
-    ctx.lineWidth = lineW;
-    ctx.lineCap   = 'round';
-    ctx.strokeStyle = color1;
-
-    // Основная дуга
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, start, end, false);
-    ctx.stroke();
-
-    // Наконечник
-    const headLen = lineW * 1.75;
-    start -= 0.3;
-    const x  = cx + r * Math.cos(start);
-    const y  = cy + r * Math.sin(start);
-    const ax = cx + (r + headLen) * Math.cos(start + Math.PI / 6);
-    const ay = cy + (r + headLen) * Math.sin(start + Math.PI / 6);
-    const ax2 = cx + (r - headLen) * Math.cos(start + Math.PI / 6);
-    const ay2 = cy + (r - headLen) * Math.sin(start + Math.PI / 6);
-
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(ax, ay);
-    ctx.lineTo(ax2, ay2);
-    ctx.closePath();
-    ctx.fillStyle = color2;
-    ctx.fill();
-}
-
-const OFFSET_X = -5;
-const OFFSET_Y = -2;
-const OFFSET_Z = 8;
-const HINT_COLOR = '#ccc';
-
-function createQHint() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 160;
-    canvas.height = 160;
-    const context = canvas.getContext('2d')!;
-
-    context.fillStyle = '#111c2a';
-    context.fillRect(0, 0, 160, 160);
-    context.fill();
-    context.fillStyle = '#33f';
-    context.fillRect(0, 157, 160, 3);
-    context.fill();
-
-    context.fillStyle = HINT_COLOR;
-    context.font = 'bold 80px Arial';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText('Q', 80, 80);
-
-    drawCircleArrow(context, 80, 80, 64, 6, HINT_COLOR, HINT_COLOR);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    const letterMaterial = new THREE.MeshBasicMaterial({
-        map: texture,
-        transparent: true,
-        opacity: 0.9,
-        side: THREE.DoubleSide
-    });
-
-    const cellSize = FIELD_SCALE_XZ / FIELD_DEPTH;
-    const letterGeometry = new THREE.PlaneGeometry(cellSize * 20, cellSize * 20);
-    const letterMesh = new THREE.Mesh(letterGeometry, letterMaterial);
-
-    letterMesh.rotateY(Math.PI / 2);
-    letterMesh.position.set(
-        -4.0 * FIELD_SCALE_XZ - 0.05 + OFFSET_X,
-        (FIELD_HEIGHT - 7) * FIELD_SCALE_Y / 3 + OFFSET_Y + 0.45,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 1.6 + OFFSET_Z
-    );
-
-    // Сохраняем ссылку на mesh для управления видимостью
-    qHintMesh = letterMesh;
-
-    staticUIContainer.add(letterMesh);
-}
-
-function createEHint() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 160;
-    canvas.height = 160;
-    const context = canvas.getContext('2d')!;
-
-    context.fillStyle = '#16223280';
-    context.fillRect(0, 0, 160, 160);
-    context.fill();
-    context.fillStyle = '#3f3';
-    context.fillRect(0, 0, 3, 160);
-    context.fill();
-
-    context.fillStyle = HINT_COLOR;
-    context.font = 'bold 80px Arial';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText('E', 80, 80);
-
-    drawCircleArrow(context, 80, 80, 64, 6, HINT_COLOR, HINT_COLOR);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    const letterMaterial = new THREE.MeshBasicMaterial({
-        map: texture,
-        transparent: true,
-        opacity: 0.9,
-        side: THREE.DoubleSide
-    });
-
-    const cellSize = FIELD_SCALE_XZ / FIELD_DEPTH;
-    const letterGeometry = new THREE.PlaneGeometry(cellSize * 20, cellSize * 20);
-    const letterMesh = new THREE.Mesh(letterGeometry, letterMaterial);
-
-    letterMesh.position.set(
-        -3 * FIELD_SCALE_XZ + 0.25 + OFFSET_X,
-        (FIELD_HEIGHT - 7) * FIELD_SCALE_Y / 3 + OFFSET_Y + 0.45,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + OFFSET_Z
-    );
-
-    // Сохраняем ссылку на mesh для управления видимостью
-    eHintMesh = letterMesh;
-
-    staticUIContainer.add(letterMesh);
-}
-
-function createWHint() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 160;
-    canvas.height = 160;
-    const context = canvas.getContext('2d')!;
-
-    context.fillStyle = '#16223250';
-    context.fillRect(0, 0, 160, 160);
-    context.fill();
-    context.fillStyle = '#f33';
-    context.fillRect(0, 0, 160, 3);
-    context.fill();
-
-    context.fillStyle = HINT_COLOR;
-    context.font = 'bold 80px Arial';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText('W', 70, 90);
-
-    drawCircleArrow(context, 70, 80, 64, 6, HINT_COLOR, HINT_COLOR);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    const letterMaterial = new THREE.MeshBasicMaterial({
-        map: texture,
-        transparent: true,
-        opacity: 0.9,
-        side: THREE.DoubleSide
-    });
-
-    const cellSize = FIELD_SCALE_XZ / FIELD_DEPTH;
-    const letterGeometry = new THREE.PlaneGeometry(cellSize * 20, cellSize * 20);
-    const letterMesh = new THREE.Mesh(letterGeometry, letterMaterial);
-    letterMesh.rotateX(-Math.PI / 2);
-    letterMesh.position.set(
-        -3.0 * FIELD_SCALE_XZ + 0.3 + OFFSET_X,
-        (FIELD_HEIGHT - 10) * FIELD_SCALE_Y / 3 + OFFSET_Y,
-        -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 1.6 + OFFSET_Z
-    );
-
-    // Сохраняем ссылку на mesh для управления видимостью
-    wHintMesh = letterMesh;
-
-    staticUIContainer.add(letterMesh);
-}
-
-function createFieldBoundaries() {
-    clearFieldBoundaries();
-    const wallMaterial = new THREE.MeshPhongMaterial({ color: 0x444444, transparent: true, opacity: 0.2, side: THREE.DoubleSide });
-
-    const createWall = (geom: THREE.PlaneGeometry, pos: [number, number, number], rot: [number, number, number]) => {
-        const wall = new THREE.Mesh(geom, wallMaterial.clone());
-        wall.position.set(...pos);
-        wall.rotation.set(...rot);
-        wall.renderOrder = 1;
-        return wall;
-    };
-
-    frontWallMesh = createWall(new THREE.PlaneGeometry(FIELD_WIDTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y), [0, 0, -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2], [0, 0, 0]);
-    backWallMesh = createWall(new THREE.PlaneGeometry(FIELD_WIDTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y), [0, 0, (FIELD_DEPTH * FIELD_SCALE_XZ) / 2], [0, Math.PI, 0]);
-    leftWallMesh = createWall(new THREE.PlaneGeometry(FIELD_DEPTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y), [-(FIELD_WIDTH * FIELD_SCALE_XZ) / 2, 0, 0], [0, Math.PI / 2, 0]);
-    rightWallMesh = createWall(new THREE.PlaneGeometry(FIELD_DEPTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y), [(FIELD_WIDTH * FIELD_SCALE_XZ) / 2, 0, 0], [0, -Math.PI / 2, 0]);
-    fieldContainer.add(frontWallMesh, backWallMesh, leftWallMesh, rightWallMesh);
-
-    // Добавляем подсказку для клавиши Q на левую стену
-    createQHint();
-    createWHint();
-    createEHint();
-
-    updateWallsOpacity();
-
-    // Добавляем светло-голубое дно стакана
-    const bottomMaterial = new THREE.MeshPhongMaterial({ color: 0x87ceeb, side: THREE.DoubleSide });
-    const bottomMesh = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_WIDTH * FIELD_SCALE_XZ, FIELD_DEPTH * FIELD_SCALE_XZ), bottomMaterial);
-    bottomMesh.rotation.x = -Math.PI / 2;
-    bottomMesh.position.set(0, -FIELD_HEIGHT * FIELD_SCALE_Y / 2, 0);
-    bottomMesh.receiveShadow = true;
-    fieldContainer.add(bottomMesh);
-
-    const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(FIELD_WIDTH * FIELD_SCALE_XZ, FIELD_HEIGHT * FIELD_SCALE_Y, FIELD_DEPTH * FIELD_SCALE_XZ));
-    const wireframe = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x888888, linewidth: 2, transparent: true, opacity: 0.7 }));
-    fieldContainer.add(wireframe);
-}
-
 function movePiece(dx: number, dy: number, dz: number) {
     // Проверяем, можем ли мы начать анимацию (не анимируемся уже)
-    if (isAnimating) return;
+    if (animationState.isAnimating) return;
 
     const piece = currentPieceAtom();
     if (!piece) return;
@@ -1261,43 +136,38 @@ function movePiece(dx: number, dy: number, dz: number) {
     const newPos = { x: piece.position.x + dx, y: piece.position.y + dy, z: piece.position.z + dz };
     if (canPlacePieceCompat(piece.blocks, newPos)) {
         // Начинаем анимацию к новой позиции
-        isAnimating = true;
-        animationStartTime = Date.now();
-        animationStartPosition = { ...piece.position };
-        animationTargetPosition = newPos;
+        startPieceAnimation(piece.position, newPos);
 
         // Сразу обновляем логическую позицию через Reatom action
         currentPieceAtom.move(dx, dy, dz);
-        // Lock delay будет обновлен автоматически через effect при изменении позиции
 
         // Обновляем миникарту при движении фигуры
-        updateMinimap();
+        updateMinimap(scene, pieceVisuals);
     }
 }
 
 function movePieceRelativeToField(dx: number, dy: number, dz: number) {
     const rotationSteps = Math.round(fieldRotationAtom() / 90) % 4;
-    let tDx = dx, tDz = dz;
-    if (rotationSteps === 1) { tDx = -dz; tDz = dx; }
-    else if (rotationSteps === 2) { tDx = -dx; tDz = -dz; }
-    else if (rotationSteps === 3) { tDx = dz; tDz = -dx; }
+    let tDx = dx,
+        tDz = dz;
+    if (rotationSteps === 1) {
+        tDx = -dz;
+        tDz = dx;
+    } else if (rotationSteps === 2) {
+        tDx = -dx;
+        tDz = -dz;
+    } else if (rotationSteps === 3) {
+        tDx = dz;
+        tDz = -dx;
+    }
     movePiece(tDx, dy, tDz);
 }
 
-
-
-
-
-
-
-
-
 function dropPiece() {
     // Если анимация идет, завершаем ее немедленно
-    if (isAnimating) {
-        isAnimating = false;
-        // Animation will complete automatically with atom state
-        updateVisuals();
+    if (animationState.isAnimating) {
+        animationState.isAnimating = false;
+        updateVisuals(gameContainer, () => updateMinimap(scene, null));
     }
 
     const piece = currentPieceAtom();
@@ -1311,16 +181,11 @@ function dropPiece() {
 
     // Если есть куда падать - анимируем
     if (targetY < piece.position.y) {
-        isAnimating = true;
-        animationStartTime = Date.now();
-        animationStartPosition = { ...piece.position };
-        animationTargetPosition = { ...piece.position, y: targetY };
+        startPieceAnimation(piece.position, { ...piece.position, y: targetY });
 
         // Обновляем позицию через Reatom action
         currentPieceAtom.move(0, targetY - piece.position.y, 0);
-        // Lock delay автоматически запустится через effect когда фигура коснется земли
     }
-    // Если некуда падать - lock delay уже должен быть активен
 }
 
 let isFieldRotating = false;
@@ -1331,8 +196,6 @@ function rotateField(direction: 1 | -1) {
     const newRotation = currentRotation + direction * 90;
     const normalizedNewRotation = ((newRotation % 360) + 360) % 360;
 
-    // Миникарта анимируется синхронно в animateRotation()
-
     const startRotation = (currentRotation * Math.PI) / 180;
     const endRotation = (newRotation * Math.PI) / 180;
     const startTime = Date.now();
@@ -1340,330 +203,44 @@ function rotateField(direction: 1 | -1) {
     function animateRotation() {
         const elapsed = Date.now() - startTime;
         const progress = Math.min(elapsed / FIELD_ROTATION_DURATION, 1);
-        const easeProgress = progress; //1 - (1 - progress) ** 3;
-        rotationContainer.rotation.y = startRotation + (endRotation - startRotation) * easeProgress;
+        rotationContainer.rotation.y = startRotation + (endRotation - startRotation) * progress;
 
-        // Синхронно вращаем миникарту - добавляем PI/2 к углу камеры
-        if (minimapCamera) {
-            updateMinimap();
-        }
+        updateMinimap(scene, pieceVisuals);
 
         if (progress < 1) {
             requestAnimationFrame(animateRotation);
         } else {
             fieldRotationAtom.set(normalizedNewRotation);
             isFieldRotating = false;
-            if (currentPieceAtom()) updateVisuals();
-            createWallGrids();
+            if (currentPieceAtom()) updateVisuals(gameContainer, () => updateMinimap(scene, null));
+            createWallGrids(fieldContainer);
             updateWallsOpacity();
         }
     }
     requestAnimationFrame(animateRotation);
 }
 
-function createFallingPiece() {
-    // Только основные фигуры для заставки, без тестовых
-    const normalShapes: (keyof typeof tetrominoShapes)[] = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
-    const randomShape = normalShapes[Math.floor(Math.random() * normalShapes.length)];
-    const shape = tetrominoShapes[randomShape];
-    const color = tetrominoColors[randomShape];
-
-    const piece = new THREE.Group();
-    // Материал для фигур в заставке
-    const material = new THREE.MeshPhongMaterial({
-        color: color,
-        emissive: color,
-        emissiveIntensity: 0.2
-    });
-
-    // Create the tetromino from blocks using unscaled geometry for menu
-    shape.forEach(block => {
-        const blockMesh = new THREE.Mesh(menuBlockGeometry, material);
-        blockMesh.position.set(block.x, block.y, block.z);
-        blockMesh.castShadow = true;
-        blockMesh.receiveShadow = true;
-        piece.add(blockMesh);
-
-        const wireframe = new THREE.LineSegments(menuEdgesGeometry, materialPools.edges);
-        wireframe.position.copy(blockMesh.position);
-        piece.add(wireframe);
-    });
-
-    // Random position and rotation
-    piece.position.set((Math.random() - 0.5) * 20, 15, (Math.random() - 0.5) * 10);
-    piece.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
-
-    // Random scale
-    const scale = 0.5 + Math.random();
-    piece.scale.set(scale, scale, scale);
-
-    const animatedPiece = piece as AnimatedPiece;
-    animatedPiece.fallSpeed = 0.05 + Math.random() * 0.1;
-    animatedPiece.rotationSpeed = {
-        x: (Math.random() - 0.5) * 0.02,
-        y: (Math.random() - 0.5) * 0.02,
-        z: (Math.random() - 0.5) * 0.02
-    };
-
-    menuContainer.add(animatedPiece);
-    fallingPieces.push(animatedPiece);
-}
-
-function updateCameraForGame() {
-    // Отодвинули камеру на 6 кубиков дальше и наклонили вниз
-    // Камера смотрит прямо на центр сцены
-    camera.position.set(0, CAMERA_START_Y, CAMERA_START_Z);
-    camera.lookAt(0, 0, 0);
-}
-
-function updateCameraForMenu() {
-    const time = Date.now() * 0.001;
-    camera.position.x = Math.sin(time * 0.3) * 2;
-    camera.position.z = 15 + Math.cos(time * 0.2) * 3;
-    camera.position.y = 5;
-    camera.lookAt(0, 0, 0);
-}
-
-function updateDynamicCamera() {
-    if (cameraMode === 'front') {
-        updateCameraForGame();
-        return;
-    }
-
-    // В простом режиме позиция фигуры не влияет на камеру
-
-    // Определяем ближайшее верхнее ребро стакана относительно статической камеры
-    const staticCameraPos = new THREE.Vector3(0, 0, 15.35);
-
-    // Вычисляем центры всех четырех верхних ребер стакана
-    const halfWidth = (FIELD_WIDTH / 2 - 0.5) * FIELD_SCALE_XZ;
-    const halfDepth = (FIELD_DEPTH / 2 - 0.5) * FIELD_SCALE_XZ;
-
-    const edgeCenters = [
-        new THREE.Vector3(0, FIELD_TOP_Y * FIELD_SCALE_Y, halfDepth),        // Переднее ребро (центр)
-        new THREE.Vector3(0, FIELD_TOP_Y * FIELD_SCALE_Y, -halfDepth),       // Заднее ребро (центр)
-        new THREE.Vector3(halfWidth, FIELD_TOP_Y * FIELD_SCALE_Y, 0),        // Правое ребро (центр)
-        new THREE.Vector3(-halfWidth, FIELD_TOP_Y * FIELD_SCALE_Y, 0)        // Левое ребро (центр)
-    ];
-
-    // Находим ближайшее ребро к статической позиции камеры
-    let nearestEdgeCenter = edgeCenters[0];
-    let minDistance = staticCameraPos.distanceTo(edgeCenters[0]);
-
-    edgeCenters.forEach(edgeCenter => {
-        const distance = staticCameraPos.distanceTo(edgeCenter);
-        if (distance < minDistance) {
-            minDistance = distance;
-            nearestEdgeCenter = edgeCenter;
-        }
-    });
-
-    // Определяем расстояние (базовое или минимальное)
-    const cameraDistance = Math.max(DYNAMIC_CAMERA_DISTANCE, DYNAMIC_CAMERA_MIN_DISTANCE);
-
-    // Позиционируем камеру точно над центром ребра на заданной высоте
-    const targetCameraPos = new THREE.Vector3(
-        nearestEdgeCenter.x, // Точно X координата центра ребра
-        nearestEdgeCenter.y + cameraDistance, // Поднимаем на заданную высоту
-        nearestEdgeCenter.z  // Точно Z координата центра ребра
-    );
-
-    // Плавно интерполируем к целевой позиции
-    dynamicCameraPosition.lerp(targetCameraPos, DYNAMIC_CAMERA_SMOOTH);
-
-    // Центр дна стакана - точка наблюдения
-    const fieldCenterBottom = new THREE.Vector3(0, FIELD_BOTTOM_Y * FIELD_SCALE_Y, 0);
-
-    // Камера всегда смотрит на центр дна стакана
-    dynamicCameraTarget.lerp(fieldCenterBottom, DYNAMIC_CAMERA_SMOOTH);
-
-    // Устанавливаем позицию и направление камеры
-    camera.position.copy(dynamicCameraPosition);
-    camera.lookAt(dynamicCameraTarget);
-}
-
-function updateCameraModeIndicator() {
-    if (!cameraIcon || !cameraModeText) return;
-
-    if (cameraMode === 'front') {
-        cameraIcon.className = 'camera-icon front';
-        cameraModeText.textContent = 'FRONT';
-    } else {
-        cameraIcon.className = 'camera-icon top';
-        cameraModeText.textContent = 'TOP';
-    }
-}
-
-// Инициализация простой миникарты с ортогональной камерой над реальным стаканом
-function initializeMinimap() {
-    minimapCanvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
-    if (!minimapCanvas) return;
-
-    // Создаем рендерер для мини-карты
-    minimapRenderer = new THREE.WebGLRenderer({
-        canvas: minimapCanvas,
-        antialias: false,
-        alpha: true
-    });
-    minimapRenderer.setSize(MINIMAP_SIZE, MINIMAP_SIZE);
-    minimapRenderer.setClearColor(0x000000, 0.3);
-
-    // Создаем ортографическую камеру для вида сверху на реальный стакан
-    const aspect = 1; // Квадратная миникарта 120x120
-    const size = (FIELD_WIDTH * FIELD_SCALE_XZ) / 2 + 1;
-    minimapCamera = new THREE.OrthographicCamera(
-        -size * aspect, size * aspect,
-        size, -size,
-        0.1, 100
-    );
-    minimapCamera.position.set(0, 20, 0);
-
-    // Синхронизируем с текущим углом поля только если не происходит анимация
-    // if (!isFieldRotating) {
-    //     const currentFieldRotation = fieldRotationAtom();
-    //     // minimapCurrentRotation = (currentFieldRotation * Math.PI) / 180;
-    // }
-
-    // Устанавливаем начальный угол камеры
-    minimapCamera.rotation.x = -Math.PI / 2; // Смотрим вниз
-    minimapCamera.rotation.y = 0; //minimapCurrentRotation; // Чистое вращение без компенсации
-    minimapCamera.rotation.z = 0; //minimapCurrentRotation; // Чистое вращение без компенсации
-
-    console.log('🗺️ Простая миникарта инициализирована');
-}
-
-// Инициализация превью следующей фигуры
-function initializeNextPiecePreview() {
-    const nextPieceCanvas = document.getElementById('next-piece-canvas') as HTMLCanvasElement;
-    if (!nextPieceCanvas) return;
-
-    // Создаем рендерер для превью следующей фигуры
-    nextPieceRenderer = new THREE.WebGLRenderer({
-        canvas: nextPieceCanvas,
-        antialias: true,
-        alpha: true
-    });
-
-    const width = 300;
-    const height = 150;
-    nextPieceRenderer.setSize(width, height);
-    nextPieceRenderer.setClearColor(0x000000, 0.1);
-    nextPieceRenderer.shadowMap.enabled = true;
-    nextPieceRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-    // Создаем отдельную сцену для превью
-    nextPieceScene = new THREE.Scene();
-
-    // Добавляем освещение
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-    nextPieceScene.add(ambientLight);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    directionalLight.position.set(2, 3, 2);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 512;
-    directionalLight.shadow.mapSize.height = 512;
-    nextPieceScene.add(directionalLight);
-
-    // Создаем камеру для превью
-    nextPieceCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-    nextPieceCamera.position.set(3, 3, 3);
-    nextPieceCamera.lookAt(0, 0, 0);
-
-    console.log('🔮 Next piece preview инициализировано');
-}
-
-// Простая миникарта с ортогональной камерой над реальным стаканом
-function updateMinimap() {
-    if (!minimapRenderer || !minimapCamera) return;
-
-    // Временно скрываем падающую фигуру чтобы не заслоняла проекции
-    const pieceWasVisible = pieceVisuals?.visible;
-    if (pieceVisuals) {
-        pieceVisuals.visible = false;
-    }
-
-    // Рендерим сцену без падающей фигуры
-    minimapRenderer.render(scene, minimapCamera);
-
-    // Восстанавливаем видимость падающей фигуры
-    if (pieceVisuals && pieceWasVisible) {
-        pieceVisuals.visible = true;
-    }
-}
-
-// Функция для обновления превью следующей фигуры
-function updateNextPiecePreview() {
-    if (!nextPieceRenderer || !nextPieceCamera || !nextPieceScene) return;
-
-    // Очищаем предыдущую сцену
-    while (nextPieceScene.children.length > 0) {
-        const child = nextPieceScene.children[0];
-        if ((child as any).isMesh || (child as any).isLineSegments) {
-            disposeObject3D(child);
-        }
-        nextPieceScene.remove(child);
-    }
-
-    // Восстанавливаем освещение
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-    nextPieceScene.add(ambientLight);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    directionalLight.position.set(2, 3, 2);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 512;
-    directionalLight.shadow.mapSize.height = 512;
-    nextPieceScene.add(directionalLight);
-
-    const nextPieceType = nextPieceAtom();
-    if (!nextPieceType) {
-        // Рендерим пустую сцену
-        nextPieceRenderer.render(nextPieceScene, nextPieceCamera);
-        return;
-    }
-
-    console.log(`🔮 Обновление превью следующей фигуры: ${nextPieceType}`);
-
-    const color = tetrominoColors[nextPieceType];
-    const material = getBlockMaterial(color);
-    const blocks = tetrominoShapes[nextPieceType];
-
-    // Создаем превью фигуры в отдельной сцене
-    const pieceGroup = new THREE.Group();
-    console.log(`🧱 Создаём ${blocks.length} блоков для фигуры ${nextPieceType}`);
-
-    for (const block of blocks) {
-        const cube = new THREE.Mesh(sharedBlockGeometry, material);
-        cube.scale.set(1 / FIELD_SCALE_XZ, 1 / FIELD_SCALE_Y, 1 / FIELD_SCALE_XZ);
-        cube.position.set(block.x, block.y, block.z);
-        cube.castShadow = true;
-        cube.receiveShadow = true;
-        pieceGroup.add(cube);
-
-        // Добавляем контур
-        const wireframe = new THREE.LineSegments(sharedEdgesGeometry, materialPools.edges);
-        wireframe.scale.copy(cube.scale);
-        wireframe.position.copy(cube.position);
-        pieceGroup.add(wireframe);
-    }
-
-    // Добавляем группу к сцене (вращение будет в отдельной анимации)
-    pieceGroup.userData.isNextPiece = true;
-
-    nextPieceScene.add(pieceGroup);
-    console.log(`✅ nextPieceScene теперь содержит ${nextPieceScene.children.length} детей`);
-}
-
-// Запуск анимации вращения миникарты уже не нужен - анимация происходит синхронно в animateRotation()
-
 // UI Elements
-let startButton: HTMLButtonElement, restartButton: HTMLButtonElement, pauseRestartButton: HTMLButtonElement, mainMenuButton: HTMLButtonElement, resumeButton: HTMLButtonElement, pauseMenuButton: HTMLButtonElement, startMenu: HTMLDivElement, pauseMenu: HTMLDivElement, scoreDisplay: HTMLDivElement, scoreValue: HTMLSpanElement, gameOverMenu: HTMLDivElement, perspectiveGrid: HTMLDivElement, cameraModeIndicator: HTMLDivElement, cameraIcon: HTMLDivElement, cameraModeText: HTMLDivElement, controlsHelp: HTMLDivElement, minimapContainer: HTMLDivElement, nextPieceUIContainer: HTMLDivElement, difficultyDisplay: HTMLDivElement, difficultyCube: HTMLDivElement, difficultyValue: HTMLDivElement;
+let startButton: HTMLButtonElement,
+    restartButton: HTMLButtonElement,
+    pauseRestartButton: HTMLButtonElement,
+    mainMenuButton: HTMLButtonElement,
+    resumeButton: HTMLButtonElement,
+    pauseMenuButton: HTMLButtonElement,
+    startMenu: HTMLDivElement,
+    pauseMenu: HTMLDivElement,
+    scoreDisplay: HTMLDivElement,
+    scoreValue: HTMLSpanElement,
+    gameOverMenu: HTMLDivElement,
+    perspectiveGrid: HTMLDivElement,
+    cameraModeIndicator: HTMLDivElement,
+    controlsHelp: HTMLDivElement,
+    minimapContainer: HTMLDivElement,
+    nextPieceUIContainer: HTMLDivElement,
+    difficultyDisplay: HTMLDivElement,
+    difficultyCube: HTMLDivElement,
+    difficultyValue: HTMLDivElement;
 
-// Lock Delay Timer теперь в models/lock-delay-indicator.ts
-
-// Мини-карта
-let minimapCanvas: HTMLCanvasElement;
 let _prevState: GameStateType = gameStateAtom();
 let menuButtons: HTMLButtonElement[] = [];
 let menuIndex = 0;
@@ -1701,8 +278,6 @@ document.addEventListener('DOMContentLoaded', () => {
     gameOverMenu = document.getElementById('game-over') as HTMLDivElement;
     perspectiveGrid = document.querySelector('.perspective-grid') as HTMLDivElement;
     cameraModeIndicator = document.getElementById('camera-mode-indicator') as HTMLDivElement;
-    cameraIcon = document.getElementById('camera-icon') as HTMLDivElement;
-    cameraModeText = document.getElementById('camera-mode-text') as HTMLDivElement;
     controlsHelp = document.getElementById('controls-help') as HTMLDivElement;
     minimapContainer = document.getElementById('minimap-container') as HTMLDivElement;
     nextPieceUIContainer = document.getElementById('next-piece-container') as HTMLDivElement;
@@ -1710,13 +285,11 @@ document.addEventListener('DOMContentLoaded', () => {
     difficultyCube = document.getElementById('difficulty-cube') as HTMLDivElement;
     difficultyValue = document.getElementById('difficulty-value') as HTMLDivElement;
 
-    // Lock Delay Timer будет создан динамически когда понадобится
-
     // Инициализация мини-карты
-    initializeMinimap();
+    initMinimap();
 
     // Инициализация превью следующей фигуры
-    initializeNextPiecePreview();
+    initNextPiecePreview();
 
     // Инициализируем lock delay timer widget
     lockDelayTimerWidget.initialize();
@@ -1800,7 +373,7 @@ effect(() => {
     if (controlsHelp) {
         const shouldShowControls = isPlaying || isPaused;
         controlsHelp.classList.toggle('hidden', !shouldShowControls);
-        controlsHelp.classList.toggle('collapsed', !controlsHelpVisible);
+        controlsHelp.classList.toggle('collapsed', !getControlsHelpVisible());
     }
     if (minimapContainer) {
         const shouldShowMinimap = isPlaying || isPaused;
@@ -1855,7 +428,7 @@ effect(() => {
 
             spawnNewPiece();
         }
-        updateDynamicCamera();
+        updateDynamicCamera(camera);
     }
     _prevState = state;
 });
@@ -1895,7 +468,7 @@ effect(() => {
 
     // Обновляем визуализацию упавших блоков только если игра идет
     if (gameStateAtom() === GameState.PLAYING) {
-        updateLandedVisuals();
+        updateLandedVisuals(landedBlocksContainer);
     }
 });
 
@@ -1918,12 +491,18 @@ effect(() => {
 });
 
 // Controls
-window.addEventListener('keydown', (event) => {
+window.addEventListener('keydown', event => {
     const state = gameStateAtom();
 
     if (state === GameState.PAUSED && event.code === 'Escape') {
         event.preventDefault();
         gameStateAtom.setPlaying();
+        return;
+    }
+
+    if (state === GameState.PAUSED && event.code === 'F1') {
+        event.preventDefault();
+        toggleControlsHelp();
         return;
     }
 
@@ -1955,51 +534,67 @@ window.addEventListener('keydown', (event) => {
 
     if (state === GameState.PLAYING && !isFieldRotating) {
         switch (event.code) {
-            case 'ArrowUp': movePieceRelativeToField(0, 0, -1); break;
-            case 'ArrowLeft': movePieceRelativeToField(-1, 0, 0); break;
-            case 'ArrowRight': movePieceRelativeToField(1, 0, 0); break;
-            case 'ArrowDown': movePieceRelativeToField(0, 0, 1); break;
-            case 'Space':
+            case 'ArrowUp':
+                movePieceRelativeToField(0, 0, -1);
+                break;
+            case 'ArrowLeft':
+                movePieceRelativeToField(-1, 0, 0);
+                break;
+            case 'ArrowRight':
+                movePieceRelativeToField(1, 0, 0);
+                break;
+            case 'ArrowDown':
+                movePieceRelativeToField(0, 0, 1);
+                break;
+            case 'Space': {
                 event.preventDefault();
                 const piece = currentPieceAtom();
                 if (piece) {
                     // Проверяем может ли фигура упасть еще ниже
-                    const canFallDown = canPlacePieceCompat(piece.blocks, { ...piece.position, y: piece.position.y - 1 });
+                    const canFallDown = canPlacePieceCompat(piece.blocks, {
+                        ...piece.position,
+                        y: piece.position.y - 1,
+                    });
 
                     if (canFallDown) {
                         // Фигура может упасть - обычное падение до дна
                         dropPiece();
                     } else {
-                        // Фигура не может упасть и lock delay активен - принудительная фиксация
                         const lockDelayState = lockDelayAtom();
                         if (lockDelayState.active) {
                             lockDelayAtom.forceLock();
                             gameActions.placePiece();
                             console.log('⚡ Принудительная фиксация фигуры по пробелу!');
                         }
-                        // Если lock delay неактивен - ничего не делаем (фигура уже зафиксирована)
                     }
                 }
                 break;
-            case 'KeyS': movePiece(0, -1, 0); break;
-            case 'KeyA': rotateField(1); break;
-            case 'KeyD': rotateField(-1); break;
-            case 'KeyX': toggleAxesHelper(); break;
-            case 'KeyP': toggleWallProjections(); break;
-            case 'Escape': gameStateAtom.setPaused(); break;
+            }
+            case 'KeyS':
+                movePiece(0, -1, 0);
+                break;
+            case 'KeyA':
+                rotateField(1);
+                break;
+            case 'KeyD':
+                rotateField(-1);
+                break;
+            case 'KeyX':
+                toggleAxesHelper(fieldContainer);
+                break;
+            case 'KeyP':
+                toggleWallProjections(gameContainer);
+                break;
+            case 'Escape':
+                gameStateAtom.setPaused();
+                break;
             case 'Enter':
                 event.preventDefault();
-                cameraMode = cameraMode === 'front' ? 'top' : 'front';
-                updateCameraModeIndicator();
-                console.log(`🎥 Camera mode: ${cameraMode}`);
+                toggleCameraMode();
                 break;
             case 'F1':
                 event.preventDefault();
-                controlsHelpVisible = !controlsHelpVisible;
-                if (controlsHelp) {
-                    controlsHelp.classList.toggle('collapsed', !controlsHelpVisible);
-                }
-                console.log(`📋 Controls help: ${controlsHelpVisible ? 'показаны' : 'скрыты'}`);
+                toggleControlsHelp();
                 break;
             case 'F2':
                 event.preventDefault();
@@ -2020,9 +615,8 @@ window.addEventListener('keydown', (event) => {
                 const r = rotateSide(piece.blocks);
                 if (canPlacePieceCompat(r, piece.position)) {
                     currentPieceAtom.rotate(r);
-                    updateMinimap();
-                    updateVisuals();
-                    // Lock delay будет обновлен автоматически через effect
+                    updateMinimap(scene, pieceVisuals);
+                    updateVisuals(gameContainer, () => updateMinimap(scene, null));
                 }
                 break;
             }
@@ -2032,9 +626,8 @@ window.addEventListener('keydown', (event) => {
                 const r = rotateInViewPlane(piece.blocks);
                 if (canPlacePieceCompat(r, piece.position)) {
                     currentPieceAtom.rotate(r);
-                    updateMinimap();
-                    updateVisuals();
-                    // Lock delay будет обновлен автоматически через effect
+                    updateMinimap(scene, pieceVisuals);
+                    updateVisuals(gameContainer, () => updateMinimap(scene, null));
                 }
                 break;
             }
@@ -2044,9 +637,8 @@ window.addEventListener('keydown', (event) => {
                 const r = rotateVertical(piece.blocks);
                 if (canPlacePieceCompat(r, piece.position)) {
                     currentPieceAtom.rotate(r);
-                    updateMinimap();
-                    updateVisuals();
-                    // Lock delay будет обновлен автоматически через effect
+                    updateMinimap(scene, pieceVisuals);
+                    updateVisuals(gameContainer, () => updateMinimap(scene, null));
                 }
                 break;
             }
@@ -2069,22 +661,22 @@ window.addEventListener('keydown', (event) => {
             case 'F5':
                 event.preventDefault();
                 gameActions.spawnTestPlane();
-                updateVisuals();
-                updateMinimap();
+                updateVisuals(gameContainer, () => updateMinimap(scene, null));
+                updateMinimap(scene, pieceVisuals);
                 console.log('🧪 Спавн тестового куба 5x5x5 с дыркой в центре');
                 break;
             case 'F6':
                 event.preventDefault();
                 gameActions.spawnTestCube();
-                updateVisuals();
-                updateMinimap();
+                updateVisuals(gameContainer, () => updateMinimap(scene, null));
+                updateMinimap(scene, pieceVisuals);
                 console.log('🧪 Спавн тестового куба 2x2x2');
                 break;
             case 'F7':
                 event.preventDefault();
                 gameActions.spawnTestI();
-                updateVisuals();
-                updateMinimap();
+                updateVisuals(gameContainer, () => updateMinimap(scene, null));
+                updateMinimap(scene, pieceVisuals);
                 console.log('🧪 Спавн обычной фигуры I для заполнения дырки');
                 break;
             case 'F8':
@@ -2097,45 +689,25 @@ window.addEventListener('keydown', (event) => {
 
 // Game Loop
 
-for (let i = 0; i < 8; i++) {
-    setTimeout(() => createFallingPiece(), i * 1000);
-}
-setInterval(() => {
-    if (gameStateAtom() === GameState.MENU) createFallingPiece();
-}, 2000);
+// Initialize falling pieces for menu
+initializeFallingPieces(menuContainer);
+
+// Start falling pieces interval
+startFallingPiecesInterval(menuContainer, gameStateAtom);
 
 function animate() {
     requestAnimationFrame(animate);
     const state = gameStateAtom();
 
     if (state === GameState.MENU) {
-        // Ограничиваем максимальное количество падающих фигур
-        const maxFallingPieces = 12;
+        // Update falling pieces animation
+        updateFallingPiecesAnimation(menuContainer);
 
-        fallingPieces.forEach((p, i) => {
-            p.position.y -= p.fallSpeed;
-            p.rotation.x += p.rotationSpeed.x;
-            p.rotation.y += p.rotationSpeed.y;
-            p.rotation.z += p.rotationSpeed.z;
-            if (p.position.y < -20) {
-                disposeObject3D(p);
-                menuContainer.remove(p);
-                fallingPieces.splice(i, 1);
-            }
-        });
+        // Animate menu lights
+        animateMenuLights(pointLight1, pointLight2);
 
-        // Удаляем лишние фигуры если их слишком много
-        while (fallingPieces.length > maxFallingPieces) {
-            const p = fallingPieces.shift()!;
-            disposeObject3D(p);
-            menuContainer.remove(p);
-        }
-        const time = Date.now() * 0.001;
-        pointLight1.position.x = Math.sin(time * 0.7) * 10;
-        pointLight1.position.z = Math.cos(time * 0.7) * 10;
-        pointLight2.position.x = Math.cos(time * 0.5) * 10;
-        pointLight2.position.z = Math.sin(time * 0.5) * 10;
-        updateCameraForMenu();
+        // Update camera for menu
+        updateCameraForMenu(camera);
     } else if (state === GameState.PLAYING || state === GameState.PAUSED) {
         if (state === GameState.PAUSED) {
             // В режиме паузы только обновляем визуализацию, но не логику игры
@@ -2143,68 +715,20 @@ function animate() {
             return;
         }
         // Обновляем камеру для игры
-        updateDynamicCamera();
+        updateDynamicCamera(camera);
 
-        // ИСПРАВЛЕНО: обновляем позицию напрямую вместо пересоздания всей визуализации
-        if (isAnimating && pieceVisuals) {
-            const elapsed = Date.now() - animationStartTime;
-            const progress = Math.min(elapsed / PIECE_ANIMATION_DURATION, 1);
-            const easeProgress = 1 - (1 - progress) ** 3;
-
-            const renderPosition = {
-                x: animationStartPosition.x + (animationTargetPosition.x - animationStartPosition.x) * easeProgress,
-                y: animationStartPosition.y + (animationTargetPosition.y - animationStartPosition.y) * easeProgress,
-                z: animationStartPosition.z + (animationTargetPosition.z - animationStartPosition.z) * easeProgress
-            };
-
-            // Просто обновляем позицию группы вместо пересоздания
-            pieceVisuals.children.forEach((child, i) => {
-                const piece = currentPieceAtom();
-                if (piece && i < piece.blocks.length * 2) { // куб + wireframe
-                    const blockIndex = Math.floor(i / 2);
-                    const block = piece.blocks[blockIndex];
-                    const x = renderPosition.x + block.x;
-                    const y = renderPosition.y + block.y;
-                    const z = renderPosition.z + block.z;
-                    child.position.set(
-                        (x - FIELD_WIDTH / 2 + 0.5) * FIELD_SCALE_XZ,
-                        (y - FIELD_HEIGHT / 2 + 0.5) * FIELD_SCALE_Y,
-                        (z - FIELD_DEPTH / 2 + 0.5) * FIELD_SCALE_XZ
-                    );
-                }
-            });
-
-            // ИСПРАВЛЕНО: обновляем проекции во время анимации
-            if (projectionsVisible) updateWallProjections(renderPosition);
-
-            // Обновляем мини-карту во время анимации
-            updateMinimap();
-
-            if (progress >= 1) {
-                isAnimating = false;
-                // Animation complete - position is already updated in currentPieceAtom
+        if (animationState.isAnimating) {
+            const isComplete = updatePieceAnimation(gameContainer, () => updateMinimap(scene, null));
+            if (isComplete) {
+                updateVisuals(gameContainer, () => updateMinimap(scene, null));
             }
         }
-
-        // Всё падение управляется через lock delay - основной цикл только для анимаций
-
-        // Миникарта анимируется синхронно с основной сценой в animateRotation()
     }
 
     // Вращение предпросмотра следующей фигуры
     const currentGameState = gameStateAtom();
-    if (nextPieceScene && (currentGameState === GameState.PLAYING || currentGameState === GameState.PAUSED)) {
-        const time = Date.now() * 0.001;
-        nextPieceScene.children.forEach(child => {
-            if (child.userData.isNextPiece) {
-                child.rotation.y = time * 0.8; // Плавное вращение вокруг Y оси
-            }
-        });
-
-        // Рендерим предпросмотр следующей фигуры
-        if (nextPieceRenderer && nextPieceCamera && nextPieceAtom()) {
-            nextPieceRenderer.render(nextPieceScene, nextPieceCamera);
-        }
+    if (currentGameState === GameState.PLAYING || currentGameState === GameState.PAUSED) {
+        renderNextPiecePreview();
     }
 
     renderer.render(scene, camera);
@@ -2220,7 +744,7 @@ window.addEventListener('resize', () => {
 effect(() => {
     const piece = currentPieceAtom();
     if (piece && gameStateAtom() === GameState.PLAYING) {
-        updateVisuals();
+        updateVisuals(gameContainer, () => updateMinimap(scene, null));
     }
 });
 
