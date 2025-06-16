@@ -100,6 +100,13 @@ function resetGameState() {
     console.log(`💰 Score reset: ${oldScore} → ${newScore}`);
     fieldRotationAtom.reset();
 
+    // Очищаем QWE hints
+    while (staticUIContainer.children.length > 0) {
+        const child = staticUIContainer.children[0];
+        disposeObject3D(child);
+        staticUIContainer.remove(child);
+    }
+
     while (landedBlocksContainer.children.length > 0) {
         const child = landedBlocksContainer.children[0];
         disposeObject3D(child);
@@ -110,7 +117,7 @@ function resetGameState() {
 
     rotationContainer.rotation.y = 0;
 
-    createFieldBoundaries(fieldContainer, staticUIContainer, createQHint, createWHint, createEHint);
+    createFieldBoundaries(fieldContainer);
     createWallGrids(fieldContainer);
 }
 
@@ -418,6 +425,12 @@ effect(() => {
     if (isPlaying) {
         if (_prevState === GameState.GAME_OVER || _prevState === GameState.MENU) {
             resetGameState();
+
+            // Добавляем QWE hints в игровой режим
+            const qHint = createQHint();
+            const wHint = createWHint();
+            const eHint = createEHint();
+            staticUIContainer.add(qHint, wHint, eHint);
 
             // Устанавливаем начальную следующую фигуру для предпросмотра
             if (!nextPieceAtom()) {

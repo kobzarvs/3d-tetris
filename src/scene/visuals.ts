@@ -43,19 +43,6 @@ export let obstacleHighlightsGroup: THREE.Group | null = null;
 export let axesHelper: THREE.AxesHelper | null = null;
 export let projectionsVisible = true;
 
-// Экспортируемые функции для управления видимостью UI (если понадобятся в будущем)
-export function setQHintMesh(_mesh: THREE.Mesh | null) {
-    // Placeholder for future use
-}
-
-export function setWHintMesh(_mesh: THREE.Mesh | null) {
-    // Placeholder for future use
-}
-
-export function setEHintMesh(_mesh: THREE.Mesh | null) {
-    // Placeholder for future use
-}
-
 export function createWallGrids(fieldContainer: THREE.Group) {
     if (bottomGridGroup) {
         disposeObject3D(bottomGridGroup);
@@ -669,13 +656,7 @@ export function updateWallsOpacity() {
     }
 }
 
-export function createFieldBoundaries(
-    fieldContainer: THREE.Group,
-    staticUIContainer: THREE.Group,
-    createQHint: () => THREE.Mesh,
-    createWHint: () => THREE.Mesh,
-    createEHint: () => THREE.Mesh,
-) {
+export function createFieldBoundaries(fieldContainer: THREE.Group) {
     clearFieldBoundaries(fieldContainer);
     const wallMaterial = new THREE.MeshPhongMaterial({
         color: 0x444444,
@@ -714,10 +695,7 @@ export function createFieldBoundaries(
     );
     fieldContainer.add(frontWallMesh, backWallMesh, leftWallMesh, rightWallMesh);
 
-    const qHint = createQHint();
-    const wHint = createWHint();
-    const eHint = createEHint();
-    staticUIContainer.add(qHint, wHint, eHint);
+    // QWE hints убраны из заставки
 
     updateWallsOpacity();
 
