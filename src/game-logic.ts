@@ -131,13 +131,11 @@ export const scoreAtom = atom(0).actions(target => ({
 }));
 
 export const fieldRotationAtom = atom(0).actions(target => ({
-    rotate: (direction: 1 | -1) => target.set(prev => (prev + direction * 90 + 360) % 360),
     reset: () => target.set(0),
 }));
 
 export const coloredModeAtom = atom(false).actions(target => ({
     toggle: () => target.set(prev => !prev),
-    update: (value: boolean) => target.set(value),
 }));
 
 export const difficultyLevelAtom = atom(3).actions(target => ({
@@ -146,8 +144,6 @@ export const difficultyLevelAtom = atom(3).actions(target => ({
 
 export const lockDelayTimerVisibleAtom = atom(false).actions(target => ({
     toggle: () => target.set(prev => !prev),
-    show: () => target.set(true),
-    hide: () => target.set(false),
 }));
 
 // Game field - 3D array
@@ -274,12 +270,6 @@ export const timersAtom = atom<GameTimers>({
             ...timers,
             lastDropTime: Date.now(),
         })),
-    startLockDelay: () =>
-        target.set(timers => ({
-            ...timers,
-            lockDelayActive: true,
-            lockDelay: Date.now(),
-        })),
     resetLockDelay: () =>
         target.set(timers => ({
             ...timers,
@@ -296,51 +286,6 @@ export const timersAtom = atom<GameTimers>({
 }));
 
 // Computed atoms
-export const canMoveDownAtom = computed(() => {
-    const piece = currentPieceAtom();
-    const field = gameFieldAtom();
-
-    if (!piece) return false;
-
-    return canPlacePiece(piece.blocks, { ...piece.position, y: piece.position.y - 1 }, field);
-});
-
-export const isGameOverAtom = computed(() => {
-    return gameStateAtom() === GameState.GAME_OVER;
-});
-
-export const isPlayingAtom = computed(() => {
-    return gameStateAtom() === GameState.PLAYING;
-});
-
-export const isOnGroundAtom = computed(() => {
-    const piece = currentPieceAtom();
-    const field = gameFieldAtom();
-
-    if (!piece) return true;
-
-    return !canPlacePiece(piece.blocks, { ...piece.position, y: piece.position.y - 1 }, field);
-});
-
-export const fieldStatisticsAtom = computed(() => {
-    const field = gameFieldAtom();
-    let filledBlocks = 0;
-    let emptySpaces = 0;
-
-    for (let y = 0; y < FIELD_HEIGHT; y++) {
-        for (let z = 0; z < FIELD_DEPTH; z++) {
-            for (let x = 0; x < FIELD_WIDTH; x++) {
-                if (field[y][z][x] !== null) {
-                    filledBlocks++;
-                } else {
-                    emptySpaces++;
-                }
-            }
-        }
-    }
-
-    return { filledBlocks, emptySpaces };
-});
 
 export const cubeArraysAtom = computed(() => {
     const field = gameFieldAtom();
@@ -803,12 +748,6 @@ export const gameActions = {
         gameStateAtom.setMenu();
     },
 
-    startGame: () => {
-        gameActions.resetGame();
-        gameStateAtom.setPlaying();
-        gameActions.spawnNewPiece();
-    },
-
     spawnNewPiece: () => {
         const field = gameFieldAtom();
         let pieceType = nextPieceAtom();
@@ -837,62 +776,6 @@ export const gameActions = {
         currentPieceAtom.spawn(pieceType);
         timersAtom.updateDropTime();
         timersAtom.resetLockDelay();
-    },
-
-    movePiece: (dx: number, dy: number, dz: number): boolean => {
-        const piece = currentPieceAtom();
-        const field = gameFieldAtom();
-
-        if (!piece) return false;
-
-        const newPosition = {
-            x: piece.position.x + dx,
-            y: piece.position.y + dy,
-            z: piece.position.z + dz,
-        };
-
-        if (canPlacePiece(piece.blocks, newPosition, field)) {
-            currentPieceAtom.move(dx, dy, dz);
-
-            // Reset lock delay if moving sideways
-            if (dx !== 0 || dz !== 0) {
-                timersAtom.resetLockDelay();
-            }
-
-            return true;
-        }
-
-        return false;
-    },
-
-    rotatePiece: (rotationType: 'view' | 'vertical' | 'side'): boolean => {
-        const piece = currentPieceAtom();
-        const field = gameFieldAtom();
-
-        if (!piece) return false;
-
-        let rotatedBlocks: Block3D[];
-
-        switch (rotationType) {
-            case 'view':
-                rotatedBlocks = rotateInViewPlane(piece.blocks);
-                break;
-            case 'vertical':
-                rotatedBlocks = rotateVertical(piece.blocks);
-                break;
-            case 'side':
-                rotatedBlocks = rotateSide(piece.blocks);
-                break;
-            default:
-                return false;
-        }
-
-        if (canPlacePiece(rotatedBlocks, piece.position, field)) {
-            currentPieceAtom.rotate(rotatedBlocks);
-            return true;
-        }
-
-        return false;
     },
 
     placePiece: () => {
@@ -989,42 +872,17 @@ export const gameActions = {
             return { x, y, z };
         });
 
-        console.log(`🎯 Итеративный поиск завершен: найдено ${finalBlocksToDestroy.length} блоков для уничтожения`);
-
         if (finalBlocksToDestroy.length > 0) {
-            // Выводим состояние стакана перед очисткой
-            console.log('📊 СОСТОЯНИЕ СТАКАНА ПЕРЕД ИТЕРАТИВНОЙ ОЧИСТКОЙ:');
-            const currentField = gameFieldAtom();
-            for (let y = FIELD_HEIGHT - 1; y >= 0; y--) {
-                console.log(
-                    `Y=${y.toString().padStart(2)}:`,
-                    currentField[y].map(row => row.map(cell => (cell ? '█' : '·')).join('')).join(' | '),
-                );
-            }
-
             // Очищаем найденные блоки
             gameFieldAtom.clearBlocks(finalBlocksToDestroy);
-
             // Применяем гравитацию
             gameFieldAtom.applyGravity();
-
-            // Выводим состояние стакана после очистки
-            console.log('📊 СОСТОЯНИЕ СТАКАНА ПОСЛЕ ИТЕРАТИВНОЙ ОЧИСТКИ:');
-            const fieldAfterClearing = gameFieldAtom();
-            for (let y = FIELD_HEIGHT - 1; y >= 0; y--) {
-                console.log(
-                    `Y=${y.toString().padStart(2)}:`,
-                    fieldAfterClearing[y].map(row => row.map(cell => (cell ? '█' : '·')).join('')).join(' | '),
-                );
-            }
         }
 
         // ВТОРОЙ ЭТАП: очистка полных плоскостей (после итеративного поиска)
         let totalLinesCleared = 0;
         let safetyCounter = 0;
         const MAX_CLEARS_PER_LEVEL = 20; // Защита от бесконечного цикла
-
-        console.log(`🧹 ВТОРОЙ ЭТАП: проверяем полные плоскости после итеративной очистки`);
 
         // Проверяем каждый уровень (горизонтальную плоскость) сверху вниз
         for (let y = FIELD_HEIGHT - 1; y >= 0; y--) {
@@ -1048,9 +906,6 @@ export const gameActions = {
                     console.warn(`⚠️ Прервана очистка на уровне Y=${y} (слишком много итераций)`);
                     break;
                 }
-
-                // Очищаем заполненную плоскость
-                console.log(`🧹 Очищаем заполненную плоскость на уровне Y=${y} (итерация ${safetyCounter})`);
 
                 // Создаем новое поле с очищенной плоскостью
                 const newField = field.map(level => level.map(row => [...row]));
@@ -1082,143 +937,6 @@ export const gameActions = {
             scoreAtom.add(lineScore + iterativeBonus);
             console.log(
                 `💰 Итеративная очистка: ${totalLinesCleared} плоскостей, ${finalBlocksToDestroy.length} блоков. Очки: ${lineScore + iterativeBonus}`,
-            );
-        }
-    },
-
-    clearLines: () => {
-        let totalLinesCleared = 0;
-        let safetyCounter = 0;
-        const MAX_CLEARS_PER_LEVEL = 20; // Защита от бесконечного цикла
-
-        // Проверяем каждый уровень (горизонтальную плоскость) сверху вниз
-        for (let y = FIELD_HEIGHT - 1; y >= 0; y--) {
-            // Получаем свежее значение поля каждый раз
-            const field = gameFieldAtom();
-
-            // Проверяем заполнена ли вся плоскость
-            let planeIsFull = true;
-            for (let z = 0; z < FIELD_DEPTH && planeIsFull; z++) {
-                for (let x = 0; x < FIELD_WIDTH && planeIsFull; x++) {
-                    if (field[y][z][x] === null) {
-                        planeIsFull = false;
-                    }
-                }
-            }
-
-            if (planeIsFull) {
-                // Защита от бесконечного цикла
-                safetyCounter++;
-                if (safetyCounter > MAX_CLEARS_PER_LEVEL) {
-                    console.warn(`⚠️ Прервана очистка на уровне Y=${y} (слишком много итераций)`);
-                    break;
-                }
-
-                // Очищаем заполненную плоскость
-                console.log(`🧹 Очищаем заполненную плоскость на уровне Y=${y} (итерация ${safetyCounter})`);
-
-                // Логируем блоки плоскости
-                const planeBlocks: Block3D[] = [];
-                for (let z = 0; z < FIELD_DEPTH; z++) {
-                    for (let x = 0; x < FIELD_WIDTH; x++) {
-                        planeBlocks.push({ x, y, z });
-                    }
-                }
-                console.log(`📍 Блоки плоскости Y=${y}:`, planeBlocks.map(b => `(${b.x},${b.y},${b.z})`).join(', '));
-
-                // Создаем новое поле с очищенной плоскостью
-                const newField = field.map(level => level.map(row => [...row]));
-                for (let z = 0; z < FIELD_DEPTH; z++) {
-                    for (let x = 0; x < FIELD_WIDTH; x++) {
-                        newField[y][z][x] = null;
-                    }
-                }
-                gameFieldAtom.set(newField);
-
-                totalLinesCleared++;
-
-                // Применяем гравитацию для упавших блоков
-                gameFieldAtom.applyGravity();
-
-                // Перепроверяем этот же уровень (могли упасть новые блоки)
-                y++;
-            } else {
-                // Уровень не заполнен - сбрасываем счетчик защиты
-                safetyCounter = 0;
-            }
-        }
-
-        // Дополнительно: очистка 3D кубических массивов
-        const cubeArrays = cubeArraysAtom();
-        let totalBlocksCleared = totalLinesCleared * FIELD_WIDTH * FIELD_DEPTH;
-
-        // Выводим полное состояние стакана перед очисткой кубов
-        if (cubeArrays.length > 0) {
-            console.log('📊 СОСТОЯНИЕ СТАКАНА ПЕРЕД ОЧИСТКОЙ КУБОВ:');
-            const currentField = gameFieldAtom();
-            for (let y = FIELD_HEIGHT - 1; y >= 0; y--) {
-                console.log(
-                    `Y=${y.toString().padStart(2)}:`,
-                    currentField[y].map(row => row.map(cell => (cell ? '█' : '·')).join('')).join(' | '),
-                );
-            }
-        }
-
-        // Clear cube arrays
-        for (let i = 0; i < cubeArrays.length; i++) {
-            const cubeArray = cubeArrays[i];
-            console.log(`\n🧊 КУБ #${i + 1}:`);
-            console.log(
-                `   Размер: ${cubeArray.size.width}x${cubeArray.size.height}x${cubeArray.size.depth} (${cubeArray.blocks.length} блоков)`,
-            );
-
-            // Проверяем соответствие требованиям сложности
-            const minSize = difficultyLevelAtom();
-            const valid =
-                cubeArray.size.width >= minSize && cubeArray.size.height >= minSize && cubeArray.size.depth >= minSize;
-            console.log(`   Требования ${minSize}x${minSize}x${minSize}: ${valid ? '✅ ДА' : '❌ НЕТ'}`);
-
-            // Выводим координаты в структурированном виде
-            const minX = Math.min(...cubeArray.blocks.map(b => b.x));
-            const maxX = Math.max(...cubeArray.blocks.map(b => b.x));
-            const minY = Math.min(...cubeArray.blocks.map(b => b.y));
-            const maxY = Math.max(...cubeArray.blocks.map(b => b.y));
-            const minZ = Math.min(...cubeArray.blocks.map(b => b.z));
-            const maxZ = Math.max(...cubeArray.blocks.map(b => b.z));
-
-            console.log(`   Область: X(${minX}-${maxX}) Y(${minY}-${maxY}) Z(${minZ}-${maxZ})`);
-            console.log(`   Блоки: [${cubeArray.blocks.map(b => `(${b.x},${b.y},${b.z})`).join(', ')}]`);
-
-            gameFieldAtom.clearBlocks(cubeArray.blocks);
-            totalBlocksCleared += cubeArray.blocks.length;
-        }
-
-        if (cubeArrays.length > 0) {
-            // Apply gravity after clearing cube arrays
-            gameFieldAtom.applyGravity();
-
-            // Выводим состояние стакана после очистки
-            console.log('\n📊 СОСТОЯНИЕ СТАКАНА ПОСЛЕ ОЧИСТКИ И ГРАВИТАЦИИ:');
-            const fieldAfterClearing = gameFieldAtom();
-            for (let y = FIELD_HEIGHT - 1; y >= 0; y--) {
-                console.log(
-                    `Y=${y.toString().padStart(2)}:`,
-                    fieldAfterClearing[y].map(row => row.map(cell => (cell ? '█' : '·')).join('')).join(' | '),
-                );
-            }
-        }
-
-        if (totalLinesCleared > 0 || cubeArrays.length > 0) {
-            // Calculate score
-            const lineScore = totalLinesCleared * FIELD_WIDTH * FIELD_DEPTH * 100; // Очки за плоскости
-            const cubeBonus = cubeArrays.reduce((sum, array) => {
-                const volume = array.size.width * array.size.height * array.size.depth;
-                return sum + volume * volume * 10; // Quadratic bonus for larger arrays
-            }, 0);
-
-            scoreAtom.add(lineScore + cubeBonus);
-            console.log(
-                `💰 Очищено: ${totalLinesCleared} плоскостей, ${cubeArrays.length} кубов. Очки: ${lineScore + cubeBonus}`,
             );
         }
     },

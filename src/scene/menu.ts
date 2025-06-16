@@ -111,18 +111,6 @@ export function updateFallingPiecesAnimation(menuContainer: THREE.Group) {
 }
 
 /**
- * Очищает все падающие фигуры
- * @param menuContainer - контейнер с фигурами
- */
-export function clearFallingPieces(menuContainer: THREE.Group) {
-    fallingPieces.forEach(p => {
-        disposeObject3D(p);
-        menuContainer.remove(p);
-    });
-    fallingPieces.length = 0;
-}
-
-/**
  * Обновляет позицию камеры для меню с плавным движением
  * @param camera - камера Three.js
  */

@@ -621,7 +621,7 @@ body {
 
 .timer-bar {
   height: 100%;
-  width: 0%;
+  width: 0;
   border-radius: 6px;
   transition: width 16ms linear, background-color 64ms ease, box-shadow 0.1s ease;
   background: linear-gradient(90deg, #00ff00, #00cc00);

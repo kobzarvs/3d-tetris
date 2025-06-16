@@ -16,7 +16,6 @@ export const FIELD_HEIGHT = 16;
 
 // Visual field dimensions (world units)
 export const ORIGINAL_FIELD_WIDTH = 10;
-export const ORIGINAL_FIELD_DEPTH = 10;
 export const ORIGINAL_FIELD_HEIGHT = 18;
 
 // Scale factors to keep the same visual size when logical dimensions change
