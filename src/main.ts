@@ -55,7 +55,9 @@ import {
     updateVisuals,
 } from './scene/pieces';
 import {
+    HINT_CONFIGS,
     createEHint,
+    createHint,
     createQHint,
     createWHint,
     getControlsHelpVisible,
@@ -430,7 +432,14 @@ effect(() => {
             const qHint = createQHint();
             const wHint = createWHint();
             const eHint = createEHint();
-            staticUIContainer.add(qHint, wHint, eHint);
+            staticUIContainer.add(
+                createHint(HINT_CONFIGS.E2),
+                createHint(HINT_CONFIGS.Q2),
+                createHint(HINT_CONFIGS.W2),
+                qHint,
+                wHint,
+                eHint,
+            );
 
             // Устанавливаем начальную следующую фигуру для предпросмотра
             if (!nextPieceAtom()) {

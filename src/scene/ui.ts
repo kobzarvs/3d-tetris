@@ -50,7 +50,7 @@ let nextPieceCamera: THREE.PerspectiveCamera;
 let nextPieceScene: THREE.Scene;
 
 // Hint constants and styling
-const OFFSET_X = -5;
+const OFFSET_X = -6;
 const OFFSET_Y = -2;
 const OFFSET_Z = 8;
 const HINT_COLOR = '#ccc';
@@ -114,19 +114,37 @@ interface HintConfig {
     setMeshRef: (mesh: THREE.Mesh) => void;
 }
 
-const HINT_CONFIGS: Record<'Q' | 'W' | 'E', HintConfig> = {
+export const HINT_CONFIGS: Record<'Q' | 'Q2' | 'W' | 'W2' | 'E' | 'E2', HintConfig> = {
     Q: {
         letter: 'Q',
-        backgroundColor: '#111c2a',
+        backgroundColor: '#111c2a50',
         accentColor: '#33f',
-        accentRect: { x: 0, y: 157, width: 160, height: 3 },
+        accentRect: { x: 0, y: 0, width: 160, height: 1 },
         textPosition: { x: 80, y: 80 },
         arrowPosition: { x: 80, y: 80 },
         rotation: { y: Math.PI / 2 },
         position: {
-            x: -4.0 * FIELD_SCALE_XZ - 0.05 + OFFSET_X,
+            x: -4.0 * FIELD_SCALE_XZ + 3.2 + OFFSET_X,
             y: ((FIELD_HEIGHT - 7) * FIELD_SCALE_Y) / 3 + OFFSET_Y + 0.45,
-            z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 1.6 + OFFSET_Z,
+            z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 1.6 + OFFSET_Z - 1,
+        },
+        meshRef: () => qHintMesh,
+        setMeshRef: mesh => {
+            qHintMesh = mesh;
+        },
+    },
+    Q2: {
+        letter: '',
+        backgroundColor: '#111c2a50',
+        accentColor: '#777',
+        accentRect: { x: 0, y: 159, width: 160, height: 1 },
+        textPosition: { x: 80, y: 80 },
+        arrowPosition: { x: 9999, y: 9999 },
+        rotation: { y: Math.PI / 2 },
+        position: {
+            x: -4.0 * FIELD_SCALE_XZ + OFFSET_X,
+            y: ((FIELD_HEIGHT - 7) * FIELD_SCALE_Y) / 3 + OFFSET_Y + 0.45,
+            z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 1.6 + OFFSET_Z - 1,
         },
         meshRef: () => qHintMesh,
         setMeshRef: mesh => {
@@ -135,16 +153,34 @@ const HINT_CONFIGS: Record<'Q' | 'W' | 'E', HintConfig> = {
     },
     W: {
         letter: 'W',
-        backgroundColor: '#16223250',
+        backgroundColor: '#162232c0',
         accentColor: '#f33',
-        accentRect: { x: 0, y: 0, width: 160, height: 3 },
+        accentRect: { x: 0, y: 159, width: 160, height: 1 },
         textPosition: { x: 70, y: 90 },
         arrowPosition: { x: 70, y: 80 },
         rotation: { x: -Math.PI / 2 },
         position: {
             x: -3.0 * FIELD_SCALE_XZ + 0.3 + OFFSET_X,
-            y: ((FIELD_HEIGHT - 10) * FIELD_SCALE_Y) / 3 + OFFSET_Y,
-            z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 1.6 + OFFSET_Z,
+            y: ((FIELD_HEIGHT - 7) * FIELD_SCALE_Y) / 3 + OFFSET_Y + 2.05,
+            z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 1.6 + OFFSET_Z - 1,
+        },
+        meshRef: () => wHintMesh,
+        setMeshRef: mesh => {
+            wHintMesh = mesh;
+        },
+    },
+    W2: {
+        letter: '',
+        backgroundColor: '#162232c0',
+        accentColor: '#777',
+        accentRect: { x: 0, y: 0, width: 160, height: 1 },
+        textPosition: { x: 70, y: 90 },
+        arrowPosition: { x: 9999, y: 9999 },
+        rotation: { x: -Math.PI / 2 },
+        position: {
+            x: -3.0 * FIELD_SCALE_XZ + 0.3 + OFFSET_X,
+            y: ((FIELD_HEIGHT - 7) * FIELD_SCALE_Y) / 3 + OFFSET_Y + 0.45 - 1.6,
+            z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + 1.6 + OFFSET_Z - 1,
         },
         meshRef: () => wHintMesh,
         setMeshRef: mesh => {
@@ -153,15 +189,32 @@ const HINT_CONFIGS: Record<'Q' | 'W' | 'E', HintConfig> = {
     },
     E: {
         letter: 'E',
-        backgroundColor: '#16223280',
+        backgroundColor: '#162232a0',
         accentColor: '#3f3',
-        accentRect: { x: 0, y: 0, width: 3, height: 160 },
+        accentRect: { x: 159, y: 0, width: 1, height: 160 },
         textPosition: { x: 80, y: 80 },
         arrowPosition: { x: 80, y: 80 },
         position: {
-            x: -3 * FIELD_SCALE_XZ + 0.25 + OFFSET_X,
+            x: -4.0 * FIELD_SCALE_XZ + 1.6 + OFFSET_X,
             y: ((FIELD_HEIGHT - 7) * FIELD_SCALE_Y) / 3 + OFFSET_Y + 0.45,
-            z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + OFFSET_Z,
+            z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + OFFSET_Z + 3.2 - 1,
+        },
+        meshRef: () => eHintMesh,
+        setMeshRef: mesh => {
+            eHintMesh = mesh;
+        },
+    },
+    E2: {
+        letter: '',
+        backgroundColor: '#162232a0',
+        accentColor: '#777',
+        accentRect: { x: 0, y: 0, width: 1, height: 160 },
+        textPosition: { x: 80, y: 80 },
+        arrowPosition: { x: 9999, y: 9999 },
+        position: {
+            x: -4.0 * FIELD_SCALE_XZ + 1.6 + OFFSET_X,
+            y: ((FIELD_HEIGHT - 7) * FIELD_SCALE_Y) / 3 + OFFSET_Y + 0.45,
+            z: -(FIELD_DEPTH * FIELD_SCALE_XZ) / 2 + OFFSET_Z - 1,
         },
         meshRef: () => eHintMesh,
         setMeshRef: mesh => {
@@ -173,7 +226,7 @@ const HINT_CONFIGS: Record<'Q' | 'W' | 'E', HintConfig> = {
 /**
  * Универсальная функция создания хинта
  */
-function createHint(config: HintConfig): THREE.Mesh {
+export function createHint(config: HintConfig): THREE.Mesh {
     const canvas = document.createElement('canvas');
     canvas.width = 160;
     canvas.height = 160;
